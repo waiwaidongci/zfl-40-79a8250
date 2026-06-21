@@ -93,9 +93,34 @@ async function createItemWithTemplate(item, templateId, templateDb) {
 async function recordStepAction(item, input, templateDb) {
   const now = new Date().toISOString();
   const stepName = input.step || "工艺";
+
+  if (hasTemplate(item)) {
+    const db = templateDb || await loadTemplates();
+    const template = (db.templates || []).find(t => t.id === item.templateId);
+    if (!template) {
+      return { error: "关联的模板不存在，无法记录步骤" };
+    }
+    const stepDef = getStepByName(template, stepName);
+    if (!stepDef) {
+      return { error: `步骤「${stepName}」不在模板「${template.name}」中` };
+    }
+    const completedKeys = getCompletedStepKeys(item);
+    const current = getCurrentStep(template, completedKeys);
+    if (current && current.key !== stepDef.key) {
+      return { error: `当前应完成「${current.name}」（第${current.order}步），不能跳到「${stepName}」` };
+    }
+    const procStep = item.processSteps.find(s => s.key === stepDef.key);
+    if (procStep && (procStep.status === "completed" || procStep.status === "skipped")) {
+      return { error: `步骤「${stepName}」已完成或已跳过，不可重复记录` };
+    }
+    const validationErrors = validateRequiredFields(stepDef, input);
+    if (validationErrors.length) {
+      return { error: validationErrors.join("; ") };
+    }
+  }
+
   item.logs = item.logs || [];
   item.steps = item.steps || [];
-
   item.steps.push({ at: now, ...input });
 
   if (input.defect) item.defect = input.defect;
@@ -118,7 +143,7 @@ async function recordStepAction(item, input, templateDb) {
     const step = template ? getStepByName(template, stepName) : null;
     if (step) {
       const procStep = item.processSteps.find(s => s.key === step.key);
-      if (procStep) {
+      if (procStep && procStep.status !== "completed" && procStep.status !== "skipped") {
         procStep.status = "completed";
         procStep.completedAt = now;
         procStep.skipped = false;
@@ -131,7 +156,7 @@ async function recordStepAction(item, input, templateDb) {
     }
   }
 
-  return item;
+  return { item };
 }
 
 async function skipStep(item, stepKey, skipReason, templateDb) {
@@ -152,6 +177,11 @@ async function skipStep(item, stepKey, skipReason, templateDb) {
   }
   if (!stepDef.allowSkip) {
     return { success: false, error: `「${stepDef.name}」为必做步骤，不允许跳过` };
+  }
+  const completedKeys = getCompletedStepKeys(item);
+  const current = getCurrentStep(template, completedKeys);
+  if (current && current.key !== stepKey) {
+    return { success: false, error: `当前应完成「${current.name}」（第${current.order}步），不能跳到「${stepDef.name}」` };
   }
   const procStep = item.processSteps.find(s => s.key === stepKey);
   if (!procStep) {

@@ -88,7 +88,8 @@ async function summarizeItem(item) {
   const logCount = (item.logs || []).length + ((item.processSteps || []).reduce((n, t) => n + (t.records || []).length, 0)) + (item.steps || []).length;
   const templateDb = await loadTemplates();
   const procInfo = await getItemProcessInfo(item, templateDb);
-  return { ...item, logCount, processInfo: procInfo };
+  const copy = { ...item, logCount, processInfo: procInfo };
+  return copy;
 }
 const mimeTypes = { ".js": "application/javascript", ".css": "text/css", ".json": "application/json" };
 
@@ -506,6 +507,15 @@ function page() {
     actionForm.onsubmit = async event => {
       event.preventDefault();
       const formData = Object.fromEntries(new FormData(actionForm).entries());
+      const selectedItem = getSelectedItem();
+      if (selectedItem && selectedItem.processInfo && selectedItem.processInfo.currentStep) {
+        const required = selectedItem.processInfo.currentStep.requiredFields || [];
+        const missing = required.filter(f => !formData[f] || (typeof formData[f] === 'string' && !formData[f].trim()));
+        if (missing.length) {
+          alert('必填项未填写：' + missing.join('、'));
+          return;
+        }
+      }
       const selectedBox = formData.box || '';
       if (selectedBox) {
         const check = BoxSlotUI.checkSlotAvailability(selectedBox);
@@ -514,7 +524,11 @@ function page() {
           return;
         }
       }
-      await api('/api/items/'+itemSelect.value+'/action', { method:'POST', body: JSON.stringify(formData) });
+      try {
+        await api('/api/items/'+itemSelect.value+'/action', { method:'POST', body: JSON.stringify(formData) });
+      } catch (e) {
+        alert('提交失败：' + e.message);
+      }
       actionForm.reset();
       const abs = document.getElementById('actionBoxSelect');
       if (abs) BoxSlotUI.renderSlotSelect(abs);
@@ -590,7 +604,14 @@ const server = http.createServer(async (req, res) => {
     if (patch && req.method === "PATCH") {
       const item = db.items.find(x => x.id === patch[1] || x.code === patch[1]);
       if (!item) return send(res, 404, { error: "item_not_found" });
-      Object.assign(item, await body(req));
+      const raw = await body(req);
+      const protectedFields = ["templateId", "templateName", "processSteps"];
+      if (!hasTemplate(item)) {
+        for (const key of protectedFields) {
+          if (key in raw) delete raw[key];
+        }
+      }
+      Object.assign(item, raw);
       item.logs ||= [];
       item.logs.push({ at: new Date().toISOString(), step: "状态", note: "更新为" + item.status });
       await saveDb(db);
@@ -624,10 +645,13 @@ const server = http.createServer(async (req, res) => {
       const item = db.items.find(x => x.id === action[1] || x.code === action[1]);
       if (!item) return send(res, 404, { error: "item_not_found" });
       const input = await body(req);
-      await recordStepAction(item, input, templateDb);
+      const result = await recordStepAction(item, input, templateDb);
+      if (result.error) {
+        return send(res, 400, { error: result.error });
+      }
       await saveDb(db);
       await syncSlotOccupancy();
-      return send(res, 201, item);
+      return send(res, 201, result.item);
     }
     if (req.method === "GET" && url.pathname === "/api/stats") return send(res, 200, computeStats(db.items));
     send(res, 404, { error: "not_found" });
