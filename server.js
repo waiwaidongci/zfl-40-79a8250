@@ -5,6 +5,8 @@ import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleDefectsRoutes } from "./routes/defects.js";
 import { handleBatchRoutes } from "./routes/chemical-batches.js";
+import { handleBoxSlotRoutes } from "./routes/box-slots.js";
+import { loadBoxSlots, saveBoxSlots } from "./data/box-slots.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(__dirname, "data", "cyanotype-negative-room.json");
@@ -64,6 +66,14 @@ function computeStats(items) {
     if (stats[item.status] !== undefined) stats[item.status] += 1;
   }
   return stats;
+}
+async function syncSlotOccupancy() {
+  const db = await loadDb();
+  const slotDb = await loadBoxSlots();
+  for (const slot of slotDb.slots) {
+    slot.currentCount = db.items.filter(i => i.box === slot.slotNo).length;
+  }
+  await saveBoxSlots(slotDb);
 }
 function summarize(item) {
   const logCount = (item.logs || []).length + (item.tasks || []).reduce((n, t) => n + (t.logs || []).length, 0);
@@ -130,18 +140,22 @@ function page() {
       <div class="tabs">
         <button class="active" data-tab="defectTab">缺陷类型管理</button>
         <button data-tab="batchTab">药液批次台账</button>
+        <button data-tab="boxSlotTab">存放盒位管理</button>
       </div>
       <div id="defectTab" class="tab-content active"></div>
       <div id="batchTab" class="tab-content"></div>
+      <div id="boxSlotTab" class="tab-content"></div>
     </section>
     <section>
       <div class="stats" id="stats"></div>
+      <div id="boxSlotStats" class="stats" style="margin-bottom:14px"></div>
       <div class="toolbar"><select id="statusFilter"><option value="">全部状态</option>${stages.map(s => '<option>'+s+'</option>').join('')}</select><input id="search" placeholder="搜索编号或关键词"></div>
       <div class="panel"><h2>创建蓝晒任务后，按涂布、晾干、曝光、冲洗、复晒、入盒记录每一步历史。</h2><div class="grid" id="cards"></div></div>
     </section>
   </main>
   <script src="/public/defect-ui.js"></script>
   <script src="/public/chemical-batch-ui.js"></script>
+  <script src="/public/box-slot-ui.js"></script>
   <script>
     const fields = [["code","底片编号","text"],["plateSize","玻璃板尺寸","text"],["chemicalBatch","药液批次","text"],["exposure","曝光时间","text"],["waterSource","冲洗水源","text"],["box","存放盒位","text"]];
     const stages = ["待曝光","冲洗中","待入盒","已交付"];
@@ -163,9 +177,30 @@ function page() {
         if (key === 'chemicalBatch') {
           return '<label>'+label+'</label><select id="batchSelect" onchange="document.getElementById(\\'batchManual\\').value=this.value===\\'__manual__\\'?\\'\\':this.value" style="margin-bottom:6px"><option value="__manual__">手动输入批次号</option></select><input id="batchManual" name="chemicalBatch" type="text" placeholder="输入药液批次号">';
         }
+        if (key === 'box') {
+          return '<label>'+label+'</label><select id="boxSlotSelect" name="box" style="margin-bottom:6px"><option value="">手动输入盒位</option></select><input id="boxManual" name="box_manual" type="text" placeholder="或手动输入盒位编号" style="margin-top:4px"><div id="boxSlotWarning" style="display:none;color:var(--warn);font-size:13px;margin-top:4px"></div>';
+        }
         return '<label>'+label+'</label><input name="'+key+'" type="'+type+'" '+(key==='code'?'required':'')+'>';
       }).join('');
       ChemicalBatchUI.renderBatchSelect(document.getElementById('batchSelect'));
+      BoxSlotUI.renderSlotSelect(document.getElementById('boxSlotSelect'));
+      const boxSlotSelect = document.getElementById('boxSlotSelect');
+      if (boxSlotSelect) {
+        boxSlotSelect.onchange = function() {
+          const warning = document.getElementById('boxSlotWarning');
+          if (this.value) {
+            const check = BoxSlotUI.checkSlotAvailability(this.value);
+            if (check.found && check.full) {
+              warning.style.display = 'block';
+              warning.textContent = '⚠ 该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'），请选择其他盒位';
+            } else {
+              warning.style.display = 'none';
+            }
+          } else {
+            warning.style.display = 'none';
+          }
+        };
+      }
       const defectSelect = '<label>缺陷类型（从缺陷库选择）</label><select id="defectSelect" name="defect"><option value="">-- 从缺陷库选择 --</option></select>';
       const otherFields = extraFields.filter(([key]) => key !== 'defect').map(([key,label]) => '<label>'+label+'</label><input name="'+key+'">').join('');
       document.querySelector('#extraFields').innerHTML = otherFields + defectSelect;
@@ -186,8 +221,10 @@ function page() {
       const q = document.querySelector('#search').value.trim();
       const visible = items.filter(item => (!status || item.status === status) && (!q || JSON.stringify(item).includes(q)));
       cards.innerHTML = visible.map(item => cardHtml(item)).join('');
-      document.querySelectorAll('[data-status]').forEach(sel => sel.onchange = async () => { await api('/api/items/'+sel.dataset.status, { method:'PATCH', body: JSON.stringify({ status: sel.value }) }); await load(); });
+      document.querySelectorAll('[data-status]').forEach(sel => sel.onchange = async () => { const newStatus = sel.value; const itemId = sel.dataset.status; if (newStatus === '待入盒' || newStatus === '已交付') { const cardEl = sel.closest('.card'); const slotSelect = cardEl ? cardEl.querySelector('.box-slot-card-select') : null; if (slotSelect) { BoxSlotUI.renderSlotSelect(slotSelect, ''); slotSelect.onchange = function() { const warning = cardEl.querySelector('.box-slot-card-warning'); if (this.value) { const check = BoxSlotUI.checkSlotAvailability(this.value); if (check.found && check.full) { warning.style.display = 'block'; warning.textContent = '⚠ 该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'）'; } else { warning.style.display = 'none'; } } else { warning.style.display = 'none'; } }; } } await api('/api/items/'+itemId, { method:'PATCH', body: JSON.stringify({ status: newStatus }) }); await load(); });
+      document.querySelectorAll('.box-slot-card-select').forEach(sel => { const itemId = sel.dataset.boxItem; const item = items.find(i => (i.id || i.code) === itemId); if (item && item.box) { BoxSlotUI.renderSlotSelect(sel, item.box); } else { BoxSlotUI.renderSlotSelect(sel, ''); } sel.onchange = function() { const cardEl = sel.closest('.card'); const warning = cardEl ? cardEl.querySelector('.box-slot-card-warning') : null; if (this.value) { const check = BoxSlotUI.checkSlotAvailability(this.value); if (check.found && check.full) { if (warning) { warning.style.display = 'block'; warning.textContent = '⚠ 该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'）'; } } else { if (warning) warning.style.display = 'none'; } } else { if (warning) warning.style.display = 'none'; } }; });
       document.querySelectorAll('[data-note]').forEach(btn => btn.onclick = async () => { const id = btn.dataset.note; const note = prompt('记录备注'); if (note) { await api('/api/items/'+id+'/logs', { method:'POST', body: JSON.stringify({ step:'备注', note }) }); await load(); } });
+      BoxSlotUI.loadStats().then(statsData => { BoxSlotUI.renderStatsOverview(statsData); }).catch(() => {});
     }
     function cardHtml(item) {
       const main = fields.slice(0,4).map(([key,label]) => '<div><b>'+label+'</b> '+(item[key] ?? '')+'</div>').join('');
@@ -204,26 +241,31 @@ function page() {
       }
       const lastRepair = (item.steps || []).filter(s => s.repair).slice(-1)[0];
       const repairHint = lastRepair ? '<div style="font-size:13px;color:var(--accent)">修补：'+lastRepair.repair+'</div>' : '';
-      return '<article class="card"><h3>'+(item.code || item.id)+'</h3><span class="pill">'+item.status+'</span>'+main+defectHtml+repairHint+tasks+'<label>状态</label><select data-status="'+(item.id || item.code)+'">'+stages.map(s => '<option '+(s===item.status?'selected':'')+'>'+s+'</option>').join('')+'</select><button class="secondary" data-note="'+(item.id || item.code)+'">追加备注</button><div class="logs meta">'+(logs || '暂无记录')+'</div></article>';
+      return '<article class="card"><h3>'+(item.code || item.id)+'</h3><span class="pill">'+item.status+'</span>'+main+defectHtml+repairHint+tasks+'<label>状态</label><select data-status="'+(item.id || item.code)+'">'+stages.map(s => '<option '+(s===item.status?'selected':'')+'>'+s+'</option>').join('')+'</select>'+(item.status==='待入盒'||item.status==='已交付'?'<label>选择盒位</label><select class="box-slot-card-select" data-box-item="'+(item.id || item.code)+'"></select><div class="box-slot-card-warning" data-box-warning="'+(item.id || item.code)+'" style="display:none;color:var(--warn);font-size:13px;margin-top:4px"></div>':'')+'<button class="secondary" data-note="'+(item.id || item.code)+'">追加备注</button><div class="logs meta">'+(logs || '暂无记录')+'</div></article>';
     }
     async function load() {
       items = await api('/api/items');
       await DefectUI.load();
       await ChemicalBatchUI.load();
+      await BoxSlotUI.load();
       render();
       DefectUI.renderDefectSelect(document.getElementById('defectSelect'));
       const batchSelect = document.getElementById('batchSelect');
       if (batchSelect) ChemicalBatchUI.renderBatchSelect(batchSelect);
+      const boxSlotSelect = document.getElementById('boxSlotSelect');
+      if (boxSlotSelect) BoxSlotUI.renderSlotSelect(boxSlotSelect);
     }
-    createForm.onsubmit = async event => { event.preventDefault(); const formData = Object.fromEntries(new FormData(createForm).entries()); const result = await api('/api/items', { method:'POST', body: JSON.stringify(formData) }); if (result.chemicalBatch && result.code) { const batch = ChemicalBatchUI.findByBatchNo(result.chemicalBatch); if (batch && !batch.negativeCodes.includes(result.code)) { batch.negativeCodes.push(result.code); await api('/api/chemical-batches/'+batch.id, { method:'PUT', body: JSON.stringify({ negativeCodes: batch.negativeCodes }) }); } } createForm.reset(); await load(); };
+    createForm.onsubmit = async event => { event.preventDefault(); const formData = Object.fromEntries(new FormData(createForm).entries()); const boxSlotSelect = document.getElementById('boxSlotSelect'); const boxManual = document.getElementById('boxManual'); if (boxSlotSelect && boxSlotSelect.value) { formData.box = boxSlotSelect.value; } else if (boxManual && boxManual.value.trim()) { formData.box = boxManual.value.trim(); } if (formData.box_manual) delete formData.box_manual; const result = await api('/api/items', { method:'POST', body: JSON.stringify(formData) }); if (result.chemicalBatch && result.code) { const batch = ChemicalBatchUI.findByBatchNo(result.chemicalBatch); if (batch && !batch.negativeCodes.includes(result.code)) { batch.negativeCodes.push(result.code); await api('/api/chemical-batches/'+batch.id, { method:'PUT', body: JSON.stringify({ negativeCodes: batch.negativeCodes }) }); } } createForm.reset(); await load(); };
     actionForm.onsubmit = async event => { event.preventDefault(); await api('/api/items/'+itemSelect.value+'/action', { method:'POST', body: JSON.stringify(Object.fromEntries(new FormData(actionForm).entries())) }); actionForm.reset(); await load(); };
     document.querySelector('#statusFilter').onchange = render; document.querySelector('#search').oninput = render; document.querySelector('#reload').onclick = load;
     document.querySelectorAll('.tabs button').forEach(btn => { btn.onclick = () => { document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); btn.classList.add('active'); document.getElementById(btn.dataset.tab).classList.add('active'); }; });
     renderForms();
     document.getElementById('defectTab').innerHTML = DefectUI.renderManagerPanel();
     document.getElementById('batchTab').innerHTML = ChemicalBatchUI.renderPanel();
+    document.getElementById('boxSlotTab').innerHTML = BoxSlotUI.renderPanel();
     DefectUI.init();
     ChemicalBatchUI.init();
+    BoxSlotUI.init();
     load();
   </script>
 </body>
@@ -242,6 +284,9 @@ const server = http.createServer(async (req, res) => {
     const batchResult = await handleBatchRoutes(req, res, url);
     if (batchResult !== null) return;
 
+    const boxSlotResult = await handleBoxSlotRoutes(req, res, url);
+    if (boxSlotResult !== null) return;
+
     const db = await loadDb();
     if (req.method === "GET" && url.pathname === "/") return html(res, page());
     if (req.method === "GET" && url.pathname === "/api/items") return send(res, 200, db.items.map(summarize));
@@ -251,6 +296,7 @@ const server = http.createServer(async (req, res) => {
       
       db.items.unshift(item);
       await saveDb(db);
+      await syncSlotOccupancy();
       return send(res, 201, item);
     }
     const patch = url.pathname.match(/^\/api\/items\/([^/]+)$/);
@@ -261,6 +307,7 @@ const server = http.createServer(async (req, res) => {
       item.logs ||= [];
       item.logs.push({ at: new Date().toISOString(), step: "状态", note: "更新为" + item.status });
       await saveDb(db);
+      await syncSlotOccupancy();
       return send(res, 200, item);
     }
     const log = url.pathname.match(/^\/api\/items\/([^/]+)\/logs$/);
@@ -288,6 +335,7 @@ const server = http.createServer(async (req, res) => {
       else item.status = "待曝光";
       item.logs.push({ at: new Date().toISOString(), step: input.step || "工艺", note: input.note || input.developStatus || "步骤记录" });
       await saveDb(db);
+      await syncSlotOccupancy();
       return send(res, 201, item);
     }
     if (req.method === "GET" && url.pathname === "/api/stats") return send(res, 200, computeStats(db.items));
