@@ -203,8 +203,27 @@ function page() {
       }
       const defectSelect = '<label>缺陷类型（从缺陷库选择）</label><select id="defectSelect" name="defect"><option value="">-- 从缺陷库选择 --</option></select>';
       const otherFields = extraFields.filter(([key]) => key !== 'defect').map(([key,label]) => '<label>'+label+'</label><input name="'+key+'">').join('');
-      document.querySelector('#extraFields').innerHTML = otherFields + defectSelect;
+      const actionBoxField = '<label>存放盒位（入盒/交付时选择）</label><select id="actionBoxSelect" name="box"><option value="">-- 选择盒位（可选） --</option></select><div id="actionBoxWarning" style="display:none;color:var(--warn);font-size:13px;margin-top:4px"></div>';
+      document.querySelector('#extraFields').innerHTML = otherFields + defectSelect + actionBoxField;
       DefectUI.renderDefectSelect(document.getElementById('defectSelect'));
+      BoxSlotUI.renderSlotSelect(document.getElementById('actionBoxSelect'));
+      const actionBoxSel = document.getElementById('actionBoxSelect');
+      if (actionBoxSel) {
+        actionBoxSel.onchange = function() {
+          const warning = document.getElementById('actionBoxWarning');
+          if (this.value) {
+            const check = BoxSlotUI.checkSlotAvailability(this.value);
+            if (check.found && check.full) {
+              warning.style.display = 'block';
+              warning.textContent = '⚠ 该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'），请选择其他盒位';
+            } else {
+              warning.style.display = 'none';
+            }
+          } else {
+            warning.style.display = 'none';
+          }
+        };
+      }
       document.getElementById('defectSelect').onchange = function() {
         const d = DefectUI.findByName(this.value);
         const repairInput = document.querySelector('input[name="repair"]');
@@ -212,6 +231,33 @@ function page() {
           repairInput.value = d.repair;
         }
       };
+    }
+    function attachCardBoxSlotHandlers() {
+      document.querySelectorAll('.box-slot-card-select').forEach(sel => {
+        const itemId = sel.dataset.boxItem;
+        const item = items.find(i => (i.id || i.code) === itemId);
+        if (item && item.box) { BoxSlotUI.renderSlotSelect(sel, item.box); } else { BoxSlotUI.renderSlotSelect(sel, ''); }
+        sel.onchange = async function() {
+          const cardEl = sel.closest('.card');
+          const warning = cardEl ? cardEl.querySelector('.box-slot-card-warning') : null;
+          const selectedBox = this.value;
+          if (selectedBox) {
+            const check = BoxSlotUI.checkSlotAvailability(selectedBox);
+            if (check.found && check.full) {
+              if (warning) { warning.style.display = 'block'; warning.textContent = '⚠ 该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'），请选择其他盒位'; }
+              return;
+            } else {
+              if (warning) warning.style.display = 'none';
+            }
+            await api('/api/items/'+itemId, { method:'PATCH', body: JSON.stringify({ box: selectedBox }) });
+            await load();
+          } else {
+            if (warning) warning.style.display = 'none';
+            await api('/api/items/'+itemId, { method:'PATCH', body: JSON.stringify({ box: '' }) });
+            await load();
+          }
+        };
+      });
     }
     function render() {
       itemSelect.innerHTML = items.map(item => '<option value="'+(item.id || item.code)+'">'+(item.code || item.id)+' · '+(item.name || item.shipType || item.source || item.plateSize || '')+'</option>').join('');
@@ -221,8 +267,8 @@ function page() {
       const q = document.querySelector('#search').value.trim();
       const visible = items.filter(item => (!status || item.status === status) && (!q || JSON.stringify(item).includes(q)));
       cards.innerHTML = visible.map(item => cardHtml(item)).join('');
-      document.querySelectorAll('[data-status]').forEach(sel => sel.onchange = async () => { const newStatus = sel.value; const itemId = sel.dataset.status; if (newStatus === '待入盒' || newStatus === '已交付') { const cardEl = sel.closest('.card'); const slotSelect = cardEl ? cardEl.querySelector('.box-slot-card-select') : null; if (slotSelect) { BoxSlotUI.renderSlotSelect(slotSelect, ''); slotSelect.onchange = function() { const warning = cardEl.querySelector('.box-slot-card-warning'); if (this.value) { const check = BoxSlotUI.checkSlotAvailability(this.value); if (check.found && check.full) { warning.style.display = 'block'; warning.textContent = '⚠ 该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'）'; } else { warning.style.display = 'none'; } } else { warning.style.display = 'none'; } }; } } await api('/api/items/'+itemId, { method:'PATCH', body: JSON.stringify({ status: newStatus }) }); await load(); });
-      document.querySelectorAll('.box-slot-card-select').forEach(sel => { const itemId = sel.dataset.boxItem; const item = items.find(i => (i.id || i.code) === itemId); if (item && item.box) { BoxSlotUI.renderSlotSelect(sel, item.box); } else { BoxSlotUI.renderSlotSelect(sel, ''); } sel.onchange = function() { const cardEl = sel.closest('.card'); const warning = cardEl ? cardEl.querySelector('.box-slot-card-warning') : null; if (this.value) { const check = BoxSlotUI.checkSlotAvailability(this.value); if (check.found && check.full) { if (warning) { warning.style.display = 'block'; warning.textContent = '⚠ 该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'）'; } } else { if (warning) warning.style.display = 'none'; } } else { if (warning) warning.style.display = 'none'; } }; });
+      document.querySelectorAll('[data-status]').forEach(sel => sel.onchange = async () => { const newStatus = sel.value; const itemId = sel.dataset.status; await api('/api/items/'+itemId, { method:'PATCH', body: JSON.stringify({ status: newStatus }) }); await load(); });
+      attachCardBoxSlotHandlers();
       document.querySelectorAll('[data-note]').forEach(btn => btn.onclick = async () => { const id = btn.dataset.note; const note = prompt('记录备注'); if (note) { await api('/api/items/'+id+'/logs', { method:'POST', body: JSON.stringify({ step:'备注', note }) }); await load(); } });
       BoxSlotUI.loadStats().then(statsData => { BoxSlotUI.renderStatsOverview(statsData); }).catch(() => {});
     }
@@ -254,9 +300,11 @@ function page() {
       if (batchSelect) ChemicalBatchUI.renderBatchSelect(batchSelect);
       const boxSlotSelect = document.getElementById('boxSlotSelect');
       if (boxSlotSelect) BoxSlotUI.renderSlotSelect(boxSlotSelect);
+      const actionBoxSel = document.getElementById('actionBoxSelect');
+      if (actionBoxSel) BoxSlotUI.renderSlotSelect(actionBoxSel);
     }
     createForm.onsubmit = async event => { event.preventDefault(); const formData = Object.fromEntries(new FormData(createForm).entries()); const boxSlotSelect = document.getElementById('boxSlotSelect'); const boxManual = document.getElementById('boxManual'); if (boxSlotSelect && boxSlotSelect.value) { formData.box = boxSlotSelect.value; } else if (boxManual && boxManual.value.trim()) { formData.box = boxManual.value.trim(); } if (formData.box_manual) delete formData.box_manual; const result = await api('/api/items', { method:'POST', body: JSON.stringify(formData) }); if (result.chemicalBatch && result.code) { const batch = ChemicalBatchUI.findByBatchNo(result.chemicalBatch); if (batch && !batch.negativeCodes.includes(result.code)) { batch.negativeCodes.push(result.code); await api('/api/chemical-batches/'+batch.id, { method:'PUT', body: JSON.stringify({ negativeCodes: batch.negativeCodes }) }); } } createForm.reset(); await load(); };
-    actionForm.onsubmit = async event => { event.preventDefault(); await api('/api/items/'+itemSelect.value+'/action', { method:'POST', body: JSON.stringify(Object.fromEntries(new FormData(actionForm).entries())) }); actionForm.reset(); await load(); };
+    actionForm.onsubmit = async event => { event.preventDefault(); const formData = Object.fromEntries(new FormData(actionForm).entries()); const selectedBox = formData.box || ''; if (selectedBox) { const check = BoxSlotUI.checkSlotAvailability(selectedBox); if (check.found && check.full) { alert('该盒位已满（'+check.slot.currentCount+'/'+check.slot.capacity+'），请选择其他盒位'); return; } } await api('/api/items/'+itemSelect.value+'/action', { method:'POST', body: JSON.stringify(formData) }); actionForm.reset(); const abs = document.getElementById('actionBoxSelect'); if (abs) BoxSlotUI.renderSlotSelect(abs); await load(); };
     document.querySelector('#statusFilter').onchange = render; document.querySelector('#search').oninput = render; document.querySelector('#reload').onclick = load;
     document.querySelectorAll('.tabs button').forEach(btn => { btn.onclick = () => { document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); btn.classList.add('active'); document.getElementById(btn.dataset.tab).classList.add('active'); }; });
     renderForms();
@@ -329,11 +377,12 @@ const server = http.createServer(async (req, res) => {
       item.steps ||= [];
       item.steps.push({ at: new Date().toISOString(), ...input });
       if (input.defect) item.defect = input.defect;
+      if (input.box !== undefined && input.box !== null && input.box !== '') item.box = input.box;
       if (input.step === "冲洗") item.status = "冲洗中";
       else if (input.step === "入盒") item.status = "待入盒";
       else if (input.step === "交付") item.status = "已交付";
       else item.status = "待曝光";
-      item.logs.push({ at: new Date().toISOString(), step: input.step || "工艺", note: input.note || input.developStatus || "步骤记录" });
+      item.logs.push({ at: new Date().toISOString(), step: input.step || "工艺", note: (input.box ? '盒位：'+input.box+' · ' : '') + (input.note || input.developStatus || "步骤记录") });
       await saveDb(db);
       await syncSlotOccupancy();
       return send(res, 201, item);
