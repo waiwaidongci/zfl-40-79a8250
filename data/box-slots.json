@@ -4,7 +4,7 @@
       "id": "BS-001",
       "slotNo": "蓝盒A-03",
       "capacity": 20,
-      "currentCount": 0,
+      "currentCount": 1,
       "remark": "蓝色编号盒，18x24cm底片专用"
     },
     {
@@ -18,7 +18,7 @@
       "id": "BS-003",
       "slotNo": "木盒B-01",
       "capacity": 10,
-      "currentCount": 1,
+      "currentCount": 0,
       "remark": "木质存放盒，大尺寸底片"
     }
   ]
