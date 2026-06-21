@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleDefectsRoutes } from "./routes/defects.js";
+import { handleBatchRoutes } from "./routes/chemical-batches.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(__dirname, "data", "cyanotype-negative-room.json");
@@ -128,8 +129,10 @@ function page() {
       <form id="actionForm" style="margin-top:14px"><h2>记录工艺步骤</h2><label>选择底片</label><select name="id" id="itemSelect"></select><div id="extraFields"></div><button>提交记录</button></form>
       <div class="tabs">
         <button class="active" data-tab="defectTab">缺陷类型管理</button>
+        <button data-tab="batchTab">药液批次台账</button>
       </div>
       <div id="defectTab" class="tab-content active"></div>
+      <div id="batchTab" class="tab-content"></div>
     </section>
     <section>
       <div class="stats" id="stats"></div>
@@ -138,6 +141,7 @@ function page() {
     </section>
   </main>
   <script src="/public/defect-ui.js"></script>
+  <script src="/public/chemical-batch-ui.js"></script>
   <script>
     const fields = [["code","底片编号","text"],["plateSize","玻璃板尺寸","text"],["chemicalBatch","药液批次","text"],["exposure","曝光时间","text"],["waterSource","冲洗水源","text"],["box","存放盒位","text"]];
     const stages = ["待曝光","冲洗中","待入盒","已交付"];
@@ -155,7 +159,13 @@ function page() {
       return data;
     }
     function renderForms() {
-      document.querySelector('#fields').innerHTML = fields.map(([key,label,type]) => '<label>'+label+'</label><input name="'+key+'" type="'+type+'" '+(key==='code'?'required':'')+'>').join('');
+      document.querySelector('#fields').innerHTML = fields.map(([key,label,type]) => {
+        if (key === 'chemicalBatch') {
+          return '<label>'+label+'</label><select id="batchSelect" onchange="document.getElementById(\\'batchManual\\').value=this.value===\\'__manual__\\'?\\'\\':this.value" style="margin-bottom:6px"><option value="__manual__">手动输入批次号</option></select><input id="batchManual" name="chemicalBatch" type="text" placeholder="输入药液批次号">';
+        }
+        return '<label>'+label+'</label><input name="'+key+'" type="'+type+'" '+(key==='code'?'required':'')+'>';
+      }).join('');
+      ChemicalBatchUI.renderBatchSelect(document.getElementById('batchSelect'));
       const defectSelect = '<label>缺陷类型（从缺陷库选择）</label><select id="defectSelect" name="defect"><option value="">-- 从缺陷库选择 --</option></select>';
       const otherFields = extraFields.filter(([key]) => key !== 'defect').map(([key,label]) => '<label>'+label+'</label><input name="'+key+'">').join('');
       document.querySelector('#extraFields').innerHTML = otherFields + defectSelect;
@@ -199,15 +209,21 @@ function page() {
     async function load() {
       items = await api('/api/items');
       await DefectUI.load();
+      await ChemicalBatchUI.load();
       render();
       DefectUI.renderDefectSelect(document.getElementById('defectSelect'));
+      const batchSelect = document.getElementById('batchSelect');
+      if (batchSelect) ChemicalBatchUI.renderBatchSelect(batchSelect);
     }
-    createForm.onsubmit = async event => { event.preventDefault(); await api('/api/items', { method:'POST', body: JSON.stringify(Object.fromEntries(new FormData(createForm).entries())) }); createForm.reset(); await load(); };
+    createForm.onsubmit = async event => { event.preventDefault(); const formData = Object.fromEntries(new FormData(createForm).entries()); const result = await api('/api/items', { method:'POST', body: JSON.stringify(formData) }); if (result.chemicalBatch && result.code) { const batch = ChemicalBatchUI.findByBatchNo(result.chemicalBatch); if (batch && !batch.negativeCodes.includes(result.code)) { batch.negativeCodes.push(result.code); await api('/api/chemical-batches/'+batch.id, { method:'PUT', body: JSON.stringify({ negativeCodes: batch.negativeCodes }) }); } } createForm.reset(); await load(); };
     actionForm.onsubmit = async event => { event.preventDefault(); await api('/api/items/'+itemSelect.value+'/action', { method:'POST', body: JSON.stringify(Object.fromEntries(new FormData(actionForm).entries())) }); actionForm.reset(); await load(); };
     document.querySelector('#statusFilter').onchange = render; document.querySelector('#search').oninput = render; document.querySelector('#reload').onclick = load;
+    document.querySelectorAll('.tabs button').forEach(btn => { btn.onclick = () => { document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); btn.classList.add('active'); document.getElementById(btn.dataset.tab).classList.add('active'); }; });
     renderForms();
     document.getElementById('defectTab').innerHTML = DefectUI.renderManagerPanel();
+    document.getElementById('batchTab').innerHTML = ChemicalBatchUI.renderPanel();
     DefectUI.init();
+    ChemicalBatchUI.init();
     load();
   </script>
 </body>
@@ -222,6 +238,9 @@ const server = http.createServer(async (req, res) => {
 
     const defectResult = await handleDefectsRoutes(req, res, url);
     if (defectResult !== null) return;
+
+    const batchResult = await handleBatchRoutes(req, res, url);
+    if (batchResult !== null) return;
 
     const db = await loadDb();
     if (req.method === "GET" && url.pathname === "/") return html(res, page());
