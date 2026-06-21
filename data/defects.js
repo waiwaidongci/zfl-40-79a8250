@@ -1,0 +1,70 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const dbPath = join(__dirname, "defects.json");
+
+const seed = {
+  defects: [
+    {
+      id: "DF-001",
+      name: "边角显影不均",
+      severity: "中等",
+      repair: "边角重涂感光液后二次曝光",
+      keywords: ["边角", "显影", "不均", "重涂"],
+      description: "底片四边或角落显影密度明显低于中心区域"
+    },
+    {
+      id: "DF-002",
+      name: "水渍斑痕",
+      severity: "轻微",
+      repair: "蒸馏水轻柔冲洗后吸水纸吸干",
+      keywords: ["水渍", "斑痕", "冲洗"],
+      description: "冲洗或晾干过程中水滴在底片表面留下的圆形或条状斑痕"
+    },
+    {
+      id: "DF-003",
+      name: "药液起泡",
+      severity: "严重",
+      repair: "重新涂布并使用消泡剂处理",
+      keywords: ["药液", "起泡", "气泡", "涂布"],
+      description: "涂布感光液时产生气泡，干燥后形成圆形透光点"
+    },
+    {
+      id: "DF-004",
+      name: "曝光过度",
+      severity: "严重",
+      repair: "缩短曝光时间重新制作，或尝试减薄处理",
+      keywords: ["曝光", "过度", "密度", "减薄"],
+      description: "曝光时间过长导致底片整体密度过高、细节丢失"
+    },
+    {
+      id: "DF-005",
+      name: "底片划伤",
+      severity: "中等",
+      repair: "轻度可用透明修补胶填充后重新接触印相",
+      keywords: ["划伤", "划痕", "修补"],
+      description: "玻璃板或感光层表面被硬物划出线状损伤"
+    }
+  ]
+};
+
+async function loadDefects() {
+  if (!existsSync(dbPath)) {
+    await mkdir(dirname(dbPath), { recursive: true });
+    await writeFile(dbPath, JSON.stringify(seed, null, 2));
+  }
+  return JSON.parse(await readFile(dbPath, "utf8"));
+}
+
+async function saveDefects(db) {
+  await writeFile(dbPath, JSON.stringify(db, null, 2));
+}
+
+function newDefectId() {
+  return "DF-" + Date.now();
+}
+
+export { loadDefects, saveDefects, newDefectId };

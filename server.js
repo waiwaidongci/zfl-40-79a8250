@@ -1,11 +1,13 @@
 import http from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { handleDefectsRoutes } from "./routes/defects.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(__dirname, "data", "cyanotype-negative-room.json");
+const publicDir = join(__dirname, "public");
 const port = Number(process.env.PORT || 3040);
 const seed = {
   "items": [
@@ -66,6 +68,21 @@ function summarize(item) {
   const logCount = (item.logs || []).length + (item.tasks || []).reduce((n, t) => n + (t.logs || []).length, 0);
   return { ...item, logCount };
 }
+const mimeTypes = { ".js": "application/javascript", ".css": "text/css", ".json": "application/json" };
+
+async function serveStatic(req, res, url) {
+  if (!url.pathname.startsWith("/public/")) return false;
+  const filePath = join(__dirname, url.pathname);
+  if (!filePath.startsWith(publicDir)) return false;
+  if (!existsSync(filePath)) return false;
+  const ext = extname(filePath);
+  const ct = mimeTypes[ext] || "application/octet-stream";
+  const content = await readFile(filePath);
+  res.writeHead(200, { "Content-Type": ct + "; charset=utf-8" });
+  res.end(content);
+  return true;
+}
+
 function page() {
   return `<!doctype html>
 <html lang="zh-CN">
@@ -86,6 +103,20 @@ function page() {
     .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; } .card { display:grid; gap:8px; }
     .meta { color:var(--muted); font-size:13px; } .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; }
     .logs { border-top:1px solid var(--line); padding-top:8px; max-height:90px; overflow:auto; } .warn { color:var(--warn); font-weight:700; }
+    .defect-row { border:1px solid var(--line); border-radius:6px; padding:8px; margin-bottom:8px; }
+    .sev-critical .pill.sev-critical { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
+    .sev-moderate .pill.sev-moderate { background:#fef3d6; color:#8a6d12; border-color:#f0d98a; }
+    .sev-minor .pill.sev-minor { background:#e8f5e4; color:var(--accent); border-color:#b8ddb0; }
+    .defect-info { background:#fef9f0; border:1px solid #f0d98a; border-radius:6px; padding:8px; margin:4px 0; font-size:13px; }
+    .defect-info .repair-hint { color:var(--accent); font-weight:600; }
+    .pill.sev-critical { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
+    .pill.sev-moderate { background:#fef3d6; color:#8a6d12; border-color:#f0d98a; }
+    .pill.sev-minor { background:#e8f5e4; color:var(--accent); border-color:#b8ddb0; }
+    .tabs { display:flex; gap:0; margin-top:14px; }
+    .tabs button { border-radius:6px 6px 0 0; background:var(--line); color:var(--ink); font-weight:400; padding:8px 14px; }
+    .tabs button.active { background:var(--panel); font-weight:700; border:1px solid var(--line); border-bottom:0; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
     @media (max-width:900px){ header{display:block;padding:18px 16px;} main{grid-template-columns:1fr;padding:16px;} }
   </style>
 </head>
@@ -95,6 +126,10 @@ function page() {
     <section>
       <form id="createForm"><h2>新增底片</h2><div id="fields"></div><label>初始状态</label><select name="status">${stages.map(s => '<option>'+s+'</option>').join('')}</select><button>保存底片</button></form>
       <form id="actionForm" style="margin-top:14px"><h2>记录工艺步骤</h2><label>选择底片</label><select name="id" id="itemSelect"></select><div id="extraFields"></div><button>提交记录</button></form>
+      <div class="tabs">
+        <button class="active" data-tab="defectTab">缺陷类型管理</button>
+      </div>
+      <div id="defectTab" class="tab-content active"></div>
     </section>
     <section>
       <div class="stats" id="stats"></div>
@@ -102,6 +137,7 @@ function page() {
       <div class="panel"><h2>创建蓝晒任务后，按涂布、晾干、曝光、冲洗、复晒、入盒记录每一步历史。</h2><div class="grid" id="cards"></div></div>
     </section>
   </main>
+  <script src="/public/defect-ui.js"></script>
   <script>
     const fields = [["code","底片编号","text"],["plateSize","玻璃板尺寸","text"],["chemicalBatch","药液批次","text"],["exposure","曝光时间","text"],["waterSource","冲洗水源","text"],["box","存放盒位","text"]];
     const stages = ["待曝光","冲洗中","待入盒","已交付"];
@@ -120,7 +156,17 @@ function page() {
     }
     function renderForms() {
       document.querySelector('#fields').innerHTML = fields.map(([key,label,type]) => '<label>'+label+'</label><input name="'+key+'" type="'+type+'" '+(key==='code'?'required':'')+'>').join('');
-      document.querySelector('#extraFields').innerHTML = extraFields.map(([key,label]) => '<label>'+label+'</label><input name="'+key+'">').join('');
+      const defectSelect = '<label>缺陷类型（从缺陷库选择）</label><select id="defectSelect" name="defect"><option value="">-- 从缺陷库选择 --</option></select>';
+      const otherFields = extraFields.filter(([key]) => key !== 'defect').map(([key,label]) => '<label>'+label+'</label><input name="'+key+'">').join('');
+      document.querySelector('#extraFields').innerHTML = otherFields + defectSelect;
+      DefectUI.renderDefectSelect(document.getElementById('defectSelect'));
+      document.getElementById('defectSelect').onchange = function() {
+        const d = DefectUI.findByName(this.value);
+        const repairInput = document.querySelector('input[name="repair"]');
+        if (d && repairInput && !repairInput.value) {
+          repairInput.value = d.repair;
+        }
+      };
     }
     function render() {
       itemSelect.innerHTML = items.map(item => '<option value="'+(item.id || item.code)+'">'+(item.code || item.id)+' · '+(item.name || item.shipType || item.source || item.plateSize || '')+'</option>').join('');
@@ -137,13 +183,32 @@ function page() {
       const main = fields.slice(0,4).map(([key,label]) => '<div><b>'+label+'</b> '+(item[key] ?? '')+'</div>').join('');
       const tasks = (item.tasks || []).map(t => '<div class="meta">任务 '+t.position+' · '+t.status+' · '+t.tension+'</div>').join('');
       const logs = (item.logs || []).slice(-4).map(l => '<div>'+l.step+'：'+l.note+'</div>').join('');
-      return '<article class="card"><h3>'+(item.code || item.id)+'</h3><span class="pill">'+item.status+'</span>'+main+tasks+'<label>状态</label><select data-status="'+(item.id || item.code)+'">'+stages.map(s => '<option '+(s===item.status?'selected':'')+'>'+s+'</option>').join('')+'</select><button class="secondary" data-note="'+(item.id || item.code)+'">追加备注</button><div class="logs meta">'+(logs || '暂无记录')+'</div></article>';
+      let defectHtml = '';
+      if (item.defect) {
+        const d = DefectUI.findByName(item.defect);
+        if (d) {
+          defectHtml = '<div class="defect-info"><b>缺陷：</b>'+d.name+' <span class="pill sev-'+DefectUI.severityClass(d.severity).replace('sev-','')+'">'+d.severity+'</span><div>'+d.description+'</div>'+(d.repair ? '<div class="repair-hint">修补建议：'+d.repair+'</div>' : '')+'</div>';
+        } else {
+          defectHtml = '<div class="defect-info"><b>缺陷：</b>'+item.defect+'</div>';
+        }
+      }
+      const lastRepair = (item.steps || []).filter(s => s.repair).slice(-1)[0];
+      const repairHint = lastRepair ? '<div style="font-size:13px;color:var(--accent)">修补：'+lastRepair.repair+'</div>' : '';
+      return '<article class="card"><h3>'+(item.code || item.id)+'</h3><span class="pill">'+item.status+'</span>'+main+defectHtml+repairHint+tasks+'<label>状态</label><select data-status="'+(item.id || item.code)+'">'+stages.map(s => '<option '+(s===item.status?'selected':'')+'>'+s+'</option>').join('')+'</select><button class="secondary" data-note="'+(item.id || item.code)+'">追加备注</button><div class="logs meta">'+(logs || '暂无记录')+'</div></article>';
     }
-    async function load() { items = await api('/api/items'); render(); }
+    async function load() {
+      items = await api('/api/items');
+      await DefectUI.load();
+      render();
+      DefectUI.renderDefectSelect(document.getElementById('defectSelect'));
+    }
     createForm.onsubmit = async event => { event.preventDefault(); await api('/api/items', { method:'POST', body: JSON.stringify(Object.fromEntries(new FormData(createForm).entries())) }); createForm.reset(); await load(); };
     actionForm.onsubmit = async event => { event.preventDefault(); await api('/api/items/'+itemSelect.value+'/action', { method:'POST', body: JSON.stringify(Object.fromEntries(new FormData(actionForm).entries())) }); actionForm.reset(); await load(); };
     document.querySelector('#statusFilter').onchange = render; document.querySelector('#search').oninput = render; document.querySelector('#reload').onclick = load;
-    renderForms(); load();
+    renderForms();
+    document.getElementById('defectTab').innerHTML = DefectUI.renderManagerPanel();
+    DefectUI.init();
+    load();
   </script>
 </body>
 </html>`;
@@ -152,6 +217,12 @@ function page() {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    if (await serveStatic(req, res, url)) return;
+
+    const defectResult = await handleDefectsRoutes(req, res, url);
+    if (defectResult !== null) return;
+
     const db = await loadDb();
     if (req.method === "GET" && url.pathname === "/") return html(res, page());
     if (req.method === "GET" && url.pathname === "/api/items") return send(res, 200, db.items.map(summarize));
