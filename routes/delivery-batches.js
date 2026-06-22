@@ -23,8 +23,8 @@ async function body(req) {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
 }
 
-export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
-  const db = await loadDeliveryBatches();
+export async function handleDeliveryBatchRoutes(req, res, url, dbItems, studioId) {
+  const db = await loadDeliveryBatches(studioId);
 
   if (req.method === "GET" && url.pathname === "/api/delivery-batches") {
     const q = url.searchParams.get("q");
@@ -45,7 +45,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
 
   if (req.method === "POST" && url.pathname === "/api/delivery-batches") {
     const input = await body(req);
-    const result = await createBatch(input);
+    const result = await createBatch(input, studioId);
     if (result.error) return send(res, 400, { error: result.error });
     return send(res, 201, result.batch);
   }
@@ -54,7 +54,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
 
   if (singleMatch && req.method === "GET") {
     if (dbItems) {
-      const result = await getBatchWithDetails(singleMatch[1], dbItems);
+      const result = await getBatchWithDetails(singleMatch[1], dbItems, studioId);
       if (result.error) return send(res, 404, { error: result.error });
       return send(res, 200, result.batch);
     }
@@ -65,13 +65,13 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
 
   if (singleMatch && req.method === "PUT") {
     const input = await body(req);
-    const result = await updateBatch(singleMatch[1], input);
+    const result = await updateBatch(singleMatch[1], input, studioId);
     if (result.error) return send(res, result.error === "batch_not_found" ? 404 : 400, { error: result.error });
     return send(res, 200, result.batch);
   }
 
   if (singleMatch && req.method === "DELETE") {
-    const result = await deleteBatch(singleMatch[1]);
+    const result = await deleteBatch(singleMatch[1], studioId);
     if (result.error) return send(res, 404, { error: result.error });
     return send(res, 200, result.batch);
   }
@@ -79,7 +79,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
   const itemsMatch = url.pathname.match(/^\/api\/delivery-batches\/([^/]+)\/items$/);
   if (itemsMatch && req.method === "POST") {
     const input = await body(req);
-    const result = await addItemToBatch(itemsMatch[1], input, dbItems);
+    const result = await addItemToBatch(itemsMatch[1], input, dbItems, studioId);
     if (result.error) {
       const status = result.error === "batch_not_found" ? 404 : 400;
       return send(res, status, { error: result.error });
@@ -89,7 +89,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
 
   const itemMatch = url.pathname.match(/^\/api\/delivery-batches\/([^/]+)\/items\/([^/]+)$/);
   if (itemMatch && req.method === "DELETE") {
-    const result = await removeItemFromBatch(itemMatch[1], decodeURIComponent(itemMatch[2]));
+    const result = await removeItemFromBatch(itemMatch[1], decodeURIComponent(itemMatch[2]), studioId);
     if (result.error) {
       const status = result.error === "batch_not_found" ? 404 : 400;
       return send(res, status, { error: result.error });
@@ -99,7 +99,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
 
   if (itemMatch && req.method === "PATCH") {
     const input = await body(req);
-    const result = await confirmItemInBatch(itemMatch[1], decodeURIComponent(itemMatch[2]), input.confirmed);
+    const result = await confirmItemInBatch(itemMatch[1], decodeURIComponent(itemMatch[2]), input.confirmed, studioId);
     if (result.error) {
       const status = result.error === "batch_not_found" ? 404 : 400;
       return send(res, status, { error: result.error });
@@ -109,7 +109,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
 
   const cleanupMatch = url.pathname.match(/^\/api\/delivery-batches\/([^/]+)\/cleanup$/);
   if (cleanupMatch && req.method === "POST") {
-    const result = await removeUnconfirmedItems(cleanupMatch[1]);
+    const result = await removeUnconfirmedItems(cleanupMatch[1], studioId);
     if (result.error) return send(res, 404, { error: result.error });
     return send(res, 200, result);
   }
@@ -117,7 +117,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
   const exportMatch = url.pathname.match(/^\/api\/delivery-batches\/([^/]+)\/export$/);
   if (exportMatch && req.method === "GET") {
     if (!dbItems) return send(res, 500, { error: "items_db_unavailable" });
-    const result = await getBatchWithDetails(exportMatch[1], dbItems);
+    const result = await getBatchWithDetails(exportMatch[1], dbItems, studioId);
     if (result.error) return send(res, 404, { error: result.error });
     const allBatchItems = result.batch.items;
     const exportableItems = allBatchItems.filter(bi => bi.confirmed && bi.isDelivered);
@@ -171,14 +171,14 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
 
   const itemBatchLookup = url.pathname.match(/^\/api\/delivery-batches\/item\/([^/]+)$/);
   if (itemBatchLookup && req.method === "GET") {
-    const result = await findBatchForItem(decodeURIComponent(itemBatchLookup[1]));
+    const result = await findBatchForItem(decodeURIComponent(itemBatchLookup[1]), studioId);
     if (!result) return send(res, 200, null);
     return send(res, 200, result);
   }
 
   if (req.method === "GET" && url.pathname === "/api/delivery-batches/ungrouped/delivered") {
     if (!dbItems) return send(res, 500, { error: "items_db_unavailable" });
-    const ungrouped = getDeliveredItemsWithoutBatch(dbItems, db);
+    const ungrouped = getDeliveredItemsWithoutBatch(dbItems, db, studioId);
     return send(res, 200, ungrouped);
   }
 

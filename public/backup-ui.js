@@ -4,8 +4,11 @@ window.BackupUI = (function () {
   let selectedBackup = null;
 
   async function api(path, options) {
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
     const res = await fetch(
-      path,
+      studioPath,
       options && options.body
         ? { ...options, headers: { "Content-Type": "application/json" } }
         : options
@@ -303,6 +306,12 @@ window.BackupUI = (function () {
     }
   }
 
+  function reset() {
+    backups = [];
+    currentCounts = null;
+    selectedBackup = null;
+  }
+
   function init() {
     const createBtn = document.getElementById("createBackupBtn");
     const refreshBtn = document.getElementById("refreshBackupBtn");
@@ -351,6 +360,7 @@ window.BackupUI = (function () {
 
   return {
     load,
+    reset,
     loadCurrentCounts,
     getBackups,
     renderPanel,

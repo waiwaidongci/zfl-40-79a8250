@@ -1,0 +1,69 @@
+{
+  "logs": [
+    {
+      "id": "AUD-1782106089042-qq3z5y",
+      "timestamp": "2026-06-22T05:28:09.042Z",
+      "actionType": "backup",
+      "itemCode": null,
+      "itemId": null,
+      "before": null,
+      "after": {
+        "filename": "backup-20260622-132809.json",
+        "timestamp": "20260622-132809",
+        "note": "首次备份"
+      },
+      "summary": "创建备份「backup-20260622-132809.json」（备注：首次备份）"
+    },
+    {
+      "id": "AUD-1782106008693-nb9puo",
+      "timestamp": "2026-06-22T05:26:48.693Z",
+      "actionType": "delete_backup",
+      "itemCode": null,
+      "itemId": null,
+      "before": {
+        "filename": "backup-20260622-131749.json"
+      },
+      "after": null,
+      "summary": "删除备份「backup-20260622-131749.json」"
+    },
+    {
+      "id": "AUD-1782105949144-gnt700",
+      "timestamp": "2026-06-22T05:25:49.144Z",
+      "actionType": "restore",
+      "itemCode": null,
+      "itemId": null,
+      "before": {
+        "backupFilename": "backup-20260622-131843.json",
+        "backupTimestamp": "20260622-131843",
+        "preRestoreBackup": "backup-20260622-132549.json"
+      },
+      "after": {
+        "restoredFiles": [
+          "cyanotype-negative-room.json",
+          "audit-logs.json",
+          "box-slots.json",
+          "chemical-batches.json",
+          "defects.json",
+          "delivery-batches.json",
+          "process-templates.json"
+        ],
+        "errors": []
+      },
+      "summary": "从备份「backup-20260622-131843.json」恢复数据，恢复 7 个文件"
+    },
+    {
+      "id": "AUD-1782105469371-c3rp4c",
+      "timestamp": "2026-06-22T05:17:49.371Z",
+      "actionType": "backup",
+      "itemCode": null,
+      "itemId": null,
+      "before": null,
+      "after": {
+        "filename": "backup-20260622-131749.json",
+        "timestamp": "20260622-131749",
+        "note": "测试备份"
+      },
+      "summary": "创建备份「backup-20260622-131749.json」（备注：测试备份）"
+    }
+  ]
+}

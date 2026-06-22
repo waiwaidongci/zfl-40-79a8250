@@ -4,14 +4,51 @@ const DeliveryListUI = (function() {
   let allItems = [];
   let selectedUngrouped = new Set();
   let editingBatchId = null;
+  let studios = [];
+  let currentStudioId = localStorage.getItem('currentStudioId') || 'default';
 
   function api(path, options) {
-    return fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options)
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
+    return fetch(studioPath, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options)
       .then(async res => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '请求失败');
         return data;
       });
+  }
+
+  async function loadStudios() {
+    studios = await fetch('/api/studios').then(r => r.json());
+    const sel = document.getElementById('studioSelect');
+    if (!sel) return;
+    sel.innerHTML = studios.map(s => '<option value="' + s.id + '"' + (s.id === currentStudioId ? ' selected' : '') + '>' + s.name + '</option>').join('');
+    const current = studios.find(s => s.id === currentStudioId);
+    const descEl = document.getElementById('studioDesc');
+    if (descEl && current) descEl.textContent = current.description || '';
+    sel.onchange = function() { switchStudio(this.value); };
+  }
+
+  async function switchStudio(id) {
+    if (id === currentStudioId) return;
+    currentStudioId = id;
+    localStorage.setItem('currentStudioId', id);
+    batches = [];
+    ungroupedItems = [];
+    allItems = [];
+    selectedUngrouped.clear();
+    editingBatchId = null;
+    const batchListEl = document.getElementById('batchList');
+    if (batchListEl) batchListEl.innerHTML = '<div class="panel" style="grid-column:1/-1"><div class="empty-state">加载中...</div></div>';
+    const ungroupedEl = document.getElementById('ungroupedList');
+    if (ungroupedEl) ungroupedEl.innerHTML = '<div class="panel"><div class="empty-state">加载中...</div></div>';
+    const statsEl = document.getElementById('batchStats');
+    if (statsEl) statsEl.innerHTML = '';
+    const current = studios.find(s => s.id === currentStudioId);
+    const descEl = document.getElementById('studioDesc');
+    if (descEl && current) descEl.textContent = current.description || '';
+    await loadAll();
   }
 
   function formatDate(dateStr) {
@@ -288,7 +325,10 @@ const DeliveryListUI = (function() {
 
   async function exportBatch(id) {
     try {
-      const res = await fetch('/api/delivery-batches/' + id + '/export');
+      const studioId = localStorage.getItem('currentStudioId') || 'default';
+      const sep = '&';
+      const exportUrl = '/api/delivery-batches/' + id + '/export' + sep + 'studioId=' + encodeURIComponent(studioId);
+      const res = await fetch(exportUrl);
       if (!res.ok) throw new Error('导出失败');
       const blob = await res.blob();
       const disp = res.headers.get('Content-Disposition') || '';
@@ -507,6 +547,7 @@ const DeliveryListUI = (function() {
     document.getElementById('closeDetailModal').onclick = closeDetailModal;
     document.getElementById('detailModal').onclick = e => { if (e.target.id === 'detailModal') closeDetailModal(); };
 
+    loadStudios();
     loadAll();
   }
 

@@ -55,10 +55,10 @@ function validateTemplate(input) {
   return errors;
 }
 
-export async function handleTemplateRoutes(req, res, url) {
+export async function handleTemplateRoutes(req, res, url, studioId) {
   if (!url.pathname.startsWith("/api/process-templates")) return null;
 
-  const db = await loadTemplates();
+  const db = await loadTemplates(studioId);
 
   if (req.method === "GET" && url.pathname === "/api/process-templates") {
     return send(res, 200, db.templates);
@@ -104,7 +104,7 @@ export async function handleTemplateRoutes(req, res, url) {
     };
 
     db.templates.push(template);
-    await saveTemplates(db);
+    await saveTemplates(db, studioId);
     return send(res, 201, template);
   }
 
@@ -154,7 +154,7 @@ export async function handleTemplateRoutes(req, res, url) {
       }
 
       template.updatedAt = new Date().toISOString();
-      await saveTemplates(db);
+      await saveTemplates(db, studioId);
       return send(res, 200, template);
     }
 
@@ -164,7 +164,7 @@ export async function handleTemplateRoutes(req, res, url) {
       }
       const idx = db.templates.findIndex(t => t.id === templateId);
       const removed = db.templates.splice(idx, 1)[0];
-      await saveTemplates(db);
+      await saveTemplates(db, studioId);
       return send(res, 200, removed);
     }
   }

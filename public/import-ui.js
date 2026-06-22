@@ -14,6 +14,43 @@ const ImportUI = (function() {
   let currentCsvText = "";
   let currentPreview = null;
   let selectedRows = new Set();
+  let studios = [];
+  let currentStudioId = localStorage.getItem('currentStudioId') || 'default';
+
+  async function loadStudios() {
+    studios = await fetch('/api/studios').then(r => r.json());
+    const sel = document.getElementById('studioSelect');
+    if (!sel) return;
+    sel.innerHTML = studios.map(s => '<option value="' + s.id + '"' + (s.id === currentStudioId ? ' selected' : '') + '>' + s.name + '</option>').join('');
+    const current = studios.find(s => s.id === currentStudioId);
+    const descEl = document.getElementById('studioDesc');
+    if (descEl && current) descEl.textContent = current.description || '';
+    sel.onchange = function() { switchStudio(this.value); };
+  }
+
+  function switchStudio(id) {
+    if (id === currentStudioId) return;
+    currentStudioId = id;
+    localStorage.setItem('currentStudioId', id);
+    currentCsvText = "";
+    currentPreview = null;
+    selectedRows.clear();
+    const step1 = document.getElementById('step1');
+    const step2 = document.getElementById('step2');
+    const step3 = document.getElementById('step3');
+    if (step1) step1.classList.remove('hidden');
+    if (step2) step2.classList.add('hidden');
+    if (step3) step3.classList.add('hidden');
+    const fileInput = document.getElementById('fileInput');
+    const csvTextarea = document.getElementById('csvTextarea');
+    const previewBtn = document.getElementById('previewBtn');
+    if (fileInput) fileInput.value = '';
+    if (csvTextarea) csvTextarea.value = '';
+    if (previewBtn) previewBtn.disabled = true;
+    const current = studios.find(s => s.id === currentStudioId);
+    const descEl = document.getElementById('studioDesc');
+    if (descEl && current) descEl.textContent = current.description || '';
+  }
 
   function init() {
     const fileInput = document.getElementById('fileInput');
@@ -83,7 +120,9 @@ const ImportUI = (function() {
           contentType = 'application/json';
         }
 
-        const res = await fetch('/api/import/preview', { method: 'POST', body, headers: contentType ? { 'Content-Type': contentType } : {} });
+        const studioId = localStorage.getItem('currentStudioId') || 'default';
+        const previewUrl = '/api/import/preview?studioId=' + encodeURIComponent(studioId);
+        const res = await fetch(previewUrl, { method: 'POST', body, headers: contentType ? { 'Content-Type': contentType } : {} });
         currentPreview = await res.json();
         if (!res.ok) throw new Error(currentPreview.error || '预览失败');
 
@@ -177,10 +216,15 @@ const ImportUI = (function() {
       });
       updateConfirmCount();
     };
+
+    loadStudios();
   }
 
   function api(path, options) {
-    return fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options)
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
+    return fetch(studioPath, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options)
       .then(async res => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '请求失败');

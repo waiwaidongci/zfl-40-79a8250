@@ -11,8 +11,8 @@ async function body(req) {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
 }
 
-export async function handleDefectsRoutes(req, res, url) {
-  const db = await loadDefects();
+export async function handleDefectsRoutes(req, res, url, studioId) {
+  const db = await loadDefects(studioId);
 
   if (req.method === "GET" && url.pathname === "/api/defects") {
     const q = url.searchParams.get("q");
@@ -40,7 +40,7 @@ export async function handleDefectsRoutes(req, res, url) {
       description: input.description || ""
     };
     db.defects.push(defect);
-    await saveDefects(db);
+    await saveDefects(db, studioId);
     return send(res, 201, defect);
   }
 
@@ -55,7 +55,7 @@ export async function handleDefectsRoutes(req, res, url) {
     if (input.repair !== undefined) defect.repair = input.repair;
     if (input.keywords !== undefined) defect.keywords = input.keywords;
     if (input.description !== undefined) defect.description = input.description;
-    await saveDefects(db);
+    await saveDefects(db, studioId);
     return send(res, 200, defect);
   }
 
@@ -63,7 +63,7 @@ export async function handleDefectsRoutes(req, res, url) {
     const idx = db.defects.findIndex(d => d.id === singleMatch[1]);
     if (idx === -1) return send(res, 404, { error: "defect_not_found" });
     const removed = db.defects.splice(idx, 1)[0];
-    await saveDefects(db);
+    await saveDefects(db, studioId);
     return send(res, 200, removed);
   }
 

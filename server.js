@@ -9,8 +9,10 @@ import { handleBoxSlotRoutes } from "./routes/box-slots.js";
 import { handleTemplateRoutes } from "./routes/process-templates.js";
 import { handleDeliveryBatchRoutes } from "./routes/delivery-batches.js";
 import { handleBackupRoutes } from "./routes/backups.js";
+import { handleStudioRoutes } from "./routes/studios.js";
 import { loadBoxSlots, saveBoxSlots } from "./data/box-slots.js";
 import { loadTemplates } from "./data/process-templates.js";
+import { migrateOldFiles, getDataPath, ensureStudioDir } from "./data/studios.js";
 import {
   createItemWithTemplate,
   recordStepAction,
@@ -37,7 +39,6 @@ import {
 import { getAuditLogs, AUDIT_ACTION_TYPES, AUDIT_ACTION_LABELS } from "./data/audit-logs.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const dbPath = join(__dirname, "data", "cyanotype-negative-room.json");
 const publicDir = join(__dirname, "public");
 const port = Number(process.env.PORT || 3040);
 const seed = {
@@ -66,14 +67,18 @@ const stages = ["待曝光","冲洗中","待入盒","已交付"];
 const statLabels = ["待曝光","冲洗中","待入盒","已交付"];
 const extraFields = [["step","步骤"],["developStatus","显影状态"],["defect","缺陷类型"],["repair","修补记录"],["note","备注"]];
 
-async function loadDb() {
+async function loadDb(studioId) {
+  const dbPath = getDataPath(studioId, "cyanotype-negative-room.json");
   if (!existsSync(dbPath)) {
     await mkdir(dirname(dbPath), { recursive: true });
     await writeFile(dbPath, JSON.stringify(seed, null, 2));
   }
   return JSON.parse(await readFile(dbPath, "utf8"));
 }
-async function saveDb(db) { await writeFile(dbPath, JSON.stringify(db, null, 2)); }
+async function saveDb(db, studioId) {
+  const dbPath = getDataPath(studioId, "cyanotype-negative-room.json");
+  await writeFile(dbPath, JSON.stringify(db, null, 2));
+}
 async function body(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -127,18 +132,18 @@ function computeStats(items) {
   }
   return stats;
 }
-async function syncSlotOccupancy() {
-  const db = await loadDb();
-  const slotDb = await loadBoxSlots();
+async function syncSlotOccupancy(studioId) {
+  const db = await loadDb(studioId);
+  const slotDb = await loadBoxSlots(studioId);
   for (const slot of slotDb.slots) {
     slot.currentCount = db.items.filter(i => i.box === slot.slotNo).length;
   }
-  await saveBoxSlots(slotDb);
+  await saveBoxSlots(slotDb, studioId);
 }
-async function summarizeItem(item) {
+async function summarizeItem(item, studioId) {
   const logCount = (item.logs || []).length + ((item.processSteps || []).reduce((n, t) => n + (t.records || []).length, 0)) + (item.steps || []).length;
-  const templateDb = await loadTemplates();
-  const procInfo = await getItemProcessInfo(item, templateDb);
+  const templateDb = await loadTemplates(studioId);
+  const procInfo = await getItemProcessInfo(item, templateDb, studioId);
   const copy = { ...item, logCount, processInfo: procInfo };
   return copy;
 }
@@ -207,7 +212,7 @@ function page() {
   </style>
 </head>
 <body>
-  <header><div><h1>古法蓝晒底片整理室</h1><div class="meta">底片任务、工艺步骤、缺陷和入盒交付</div></div><div style="display:flex;gap:8px"><button class="secondary" onclick="location.href='/delivery-list'">交付清单</button><button class="secondary" onclick="location.href='/import'">批量导入</button><button class="secondary" onclick="location.href='/audit-logs'">审计日志</button><button id="reload">刷新</button></div></header>
+  <header><div style="display:flex;align-items:center;gap:12px"><div><h1 style="display:inline">古法蓝晒底片整理室</h1></div><div style="display:flex;align-items:center;gap:6px"><label style="margin:0;font-size:13px;color:var(--muted)">当前工作室</label><select id="studioSelect" style="width:auto;min-width:140px;padding:6px 8px;font-size:14px"></select><button class="secondary" type="button" id="studioManageBtn" style="padding:6px 10px;font-size:12px">管理工作室</button></div><div class="meta" id="studioDesc"></div></div><div style="display:flex;gap:8px"><button class="secondary" onclick="location.href='/delivery-list'">交付清单</button><button class="secondary" onclick="location.href='/import'">批量导入</button><button class="secondary" onclick="location.href='/audit-logs'">审计日志</button><button id="reload">刷新</button></div></header>
   <main>
     <section>
       <form id="createForm"><h2>新增底片</h2><label>工艺流程模板</label><select name="templateId" id="templateSelect"><option value="">不使用模板（兼容模式）</option></select><div id="fields"></div><label>初始状态</label><select name="status">${stages.map(s => '<option>'+s+'</option>').join('')}</select><button>保存底片</button></form>
@@ -260,11 +265,57 @@ function page() {
     const itemSelect = document.querySelector('#itemSelect');
     let items = [];
     let itemBatchMap = {};
+    let currentStudioId = localStorage.getItem('currentStudioId') || 'default';
+    let studios = [];
     async function api(path, options) {
-      const res = await fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options);
+      const sep = path.includes('?') ? '&' : '?';
+      const studioPath = path + sep + 'studioId=' + encodeURIComponent(currentStudioId);
+      const res = await fetch(studioPath, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '请求失败');
       return data;
+    }
+    async function loadStudios() {
+      studios = await fetch('/api/studios').then(r => r.json());
+      const sel = document.getElementById('studioSelect');
+      if (!sel) return;
+      sel.innerHTML = studios.map(s => '<option value="' + s.id + '"' + (s.id === currentStudioId ? ' selected' : '') + '>' + s.name + '</option>').join('');
+      const current = studios.find(s => s.id === currentStudioId);
+      const descEl = document.getElementById('studioDesc');
+      if (descEl && current) descEl.textContent = current.description || '';
+    }
+    async function switchStudio(id) {
+      if (id === currentStudioId) return;
+      currentStudioId = id;
+      localStorage.setItem('currentStudioId', id);
+      DefectUI.reset();
+      ChemicalBatchUI.reset();
+      BoxSlotUI.reset();
+      ProcessUI.reset();
+      DeliveryBatchUI.reset();
+      BackupUI.reset();
+      cards.innerHTML = '';
+      statsEl.innerHTML = '';
+      document.getElementById('boxSlotStats').innerHTML = '';
+      items = [];
+      itemBatchMap = {};
+      itemSelect.innerHTML = '';
+      const defectListEl = document.getElementById('defectList');
+      if (defectListEl) defectListEl.innerHTML = '<div class="meta">加载中...</div>';
+      const batchListEl = document.getElementById('batchList');
+      if (batchListEl) batchListEl.innerHTML = '<div class="meta">加载中...</div>';
+      const slotListEl = document.getElementById('slotList');
+      if (slotListEl) slotListEl.innerHTML = '<div class="meta">加载中...</div>';
+      const backupListEl = document.getElementById('backupList');
+      if (backupListEl) backupListEl.innerHTML = '<div class="meta">加载中...</div>';
+      await load();
+      const current = studios.find(s => s.id === currentStudioId);
+      const descEl = document.getElementById('studioDesc');
+      if (descEl && current) descEl.textContent = current.description || '';
+      DefectUI.renderDefectList(DefectUI.getDefects());
+      ChemicalBatchUI.renderBatchList(ChemicalBatchUI.getBatches());
+      BoxSlotUI.renderSlotList(BoxSlotUI.getSlots());
+      BackupUI.renderBackupList();
     }
     function getSelectedItem() {
       const id = itemSelect.value;
@@ -694,6 +745,78 @@ function page() {
     BoxSlotUI.init();
     ProcessUI.init();
     BackupUI.init();
+    document.getElementById('studioSelect').onchange = function() { switchStudio(this.value); };
+    document.getElementById('studioManageBtn').onclick = function() { openStudioModal(); };
+    function openStudioModal() {
+      let existing = document.getElementById('studioModal');
+      if (existing) existing.remove();
+      const modal = document.createElement('div');
+      modal.id = 'studioModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2000';
+      modal.innerHTML = '<div class="panel" style="width:500px;max-height:80vh;overflow:auto;position:relative">' +
+        '<button id="closeStudioModal" class="secondary" style="position:absolute;top:10px;right:10px;padding:4px 8px">关闭</button>' +
+        '<h2 style="margin-top:0">工作室管理</h2>' +
+        '<div id="studioList" style="margin-bottom:14px"></div>' +
+        '<div style="border-top:1px solid var(--line);padding-top:12px">' +
+          '<h3 style="font-size:15px;margin:0 0 8px">新建工作室</h3>' +
+          '<label>名称</label><input id="newStudioName" placeholder="输入工作室名称">' +
+          '<label>说明</label><textarea id="newStudioDesc" rows="2" placeholder="工作室描述（可选）"></textarea>' +
+          '<button id="createStudioBtn" style="margin-top:8px">创建工作室</button>' +
+        '</div>' +
+      '</div>';
+      document.body.appendChild(modal);
+      document.getElementById('closeStudioModal').onclick = () => modal.remove();
+      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+      renderStudioList();
+      document.getElementById('createStudioBtn').onclick = async () => {
+        const name = document.getElementById('newStudioName').value.trim();
+        if (!name) { alert('工作室名称必填'); return; }
+        const description = document.getElementById('newStudioDesc').value.trim();
+        await fetch('/api/studios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description }) });
+        document.getElementById('newStudioName').value = '';
+        document.getElementById('newStudioDesc').value = '';
+        await loadStudios();
+        renderStudioList();
+      };
+    }
+    function renderStudioList() {
+      const container = document.getElementById('studioList');
+      if (!container) return;
+      container.innerHTML = studios.map(s =>
+        '<div style="border:1px solid var(--line);border-radius:6px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">' +
+          '<div><strong>' + s.name + '</strong>' + (s.id === 'default' ? ' <span class="pill" style="background:#e8f5e4;color:var(--accent);border-color:#b8ddb0">默认</span>' : '') +
+          (s.description ? '<div class="meta">' + s.description + '</div>' : '') + '</div>' +
+          '<div style="display:flex;gap:6px">' +
+            '<button class="secondary" style="font-size:12px;padding:4px 8px" data-switch-studio="' + s.id + '">切换</button>' +
+            (s.id !== 'default' ? '<button class="secondary" style="font-size:12px;padding:4px 8px;background:var(--warn)" data-del-studio="' + s.id + '">删除</button>' : '') +
+          '</div>' +
+        '</div>'
+      ).join('');
+      container.querySelectorAll('[data-switch-studio]').forEach(btn => {
+        btn.onclick = async () => {
+          currentStudioId = btn.dataset.switchStudio;
+          localStorage.setItem('currentStudioId', currentStudioId);
+          document.getElementById('studioSelect').value = currentStudioId;
+          await switchStudio(currentStudioId);
+          document.getElementById('studioModal').remove();
+        };
+      });
+      container.querySelectorAll('[data-del-studio]').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('确认删除此工作室？该工作室的所有数据将被永久删除。')) return;
+          await fetch('/api/studios/' + btn.dataset.delStudio, { method: 'DELETE' });
+          if (currentStudioId === btn.dataset.delStudio) {
+            currentStudioId = 'default';
+            localStorage.setItem('currentStudioId', 'default');
+            document.getElementById('studioSelect').value = 'default';
+            await switchStudio('default');
+          }
+          await loadStudios();
+          renderStudioList();
+        };
+      });
+    }
+    loadStudios();
     load();
   </script>
 </body>
@@ -766,6 +889,7 @@ function deliveryListPage() {
     <div>
       <a href="/" class="back-btn">&larr; 返回整理室</a>
       <h1 style="margin-top:8px">交付清单</h1>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px"><label style="margin:0;font-size:13px;color:var(--muted)">当前工作室</label><select id="studioSelect" style="width:auto;min-width:140px;padding:6px 8px;font-size:14px"></select><div class="meta" id="studioDesc"></div></div>
       <div class="meta">按客户或交付批次归档已交付底片，导出清单</div>
     </div>
     <div style="display:flex;gap:8px"><button id="createBatchBtn">+ 新建批次</button><button class="secondary" id="reload">刷新</button></div>
@@ -915,6 +1039,7 @@ function importPage() {
     <div>
       <a href="/" class="back-btn">&larr; 返回整理室</a>
       <h1 style="margin-top:8px">批量导入底片</h1>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px"><label style="margin:0;font-size:13px;color:var(--muted)">当前工作室</label><select id="studioSelect" style="width:auto;min-width:140px;padding:6px 8px;font-size:14px"></select><div class="meta" id="studioDesc"></div></div>
       <div class="meta">上传或粘贴CSV格式的底片清单，预览后批量创建</div>
     </div>
   </header>
@@ -1084,6 +1209,7 @@ function auditLogsPage() {
     <div>
       <a href="/" class="back-btn">&larr; 返回整理室</a>
       <h1 style="margin-top:8px">操作审计日志</h1>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px"><label style="margin:0;font-size:13px;color:var(--muted)">当前工作室</label><select id="studioSelect" style="width:auto;min-width:140px;padding:6px 8px;font-size:14px"></select><div class="meta" id="studioDesc"></div></div>
       <div class="meta">记录所有关键操作的时间、对象、动作类型和变更摘要</div>
     </div>
     <div style="display:flex;gap:8px"><button class="secondary" id="reload">刷新</button><button id="clearFilters">清除筛选</button></div>
@@ -1165,12 +1291,50 @@ function auditLogsPage() {
     let allLogs = [];
     let actionLabels = {};
     let actionTypes = {};
+    let studios = [];
+    let currentStudioId = localStorage.getItem('currentStudioId') || 'default';
 
     async function api(path, options) {
-      const res = await fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options);
+      const sep = path.includes('?') ? '&' : '?';
+      const studioPath = path + sep + 'studioId=' + encodeURIComponent(currentStudioId);
+      const res = await fetch(studioPath, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '请求失败');
       return data;
+    }
+
+    async function loadStudios() {
+      const res = await fetch('/api/studios');
+      studios = await res.json();
+      const sel = document.getElementById('studioSelect');
+      sel.innerHTML = studios.map(s => '<option value="' + s.id + '"' + (s.id === currentStudioId ? ' selected' : '') + '>' + s.name + '</option>').join('');
+      const current = studios.find(s => s.id === currentStudioId);
+      const descEl = document.getElementById('studioDesc');
+      if (descEl && current) descEl.textContent = current.description || '';
+      sel.onchange = function() { switchStudio(this.value); };
+    }
+
+    async function switchStudio(id) {
+      if (id === currentStudioId) return;
+      currentStudioId = id;
+      localStorage.setItem('currentStudioId', id);
+      allLogs = [];
+      const tbody = document.getElementById('auditBody');
+      const empty = document.getElementById('emptyState');
+      const resultCount = document.getElementById('resultCount');
+      const statsEl = document.getElementById('stats');
+      tbody.innerHTML = '';
+      empty.classList.remove('hidden');
+      resultCount.textContent = '加载中...';
+      statsEl.innerHTML = '';
+      const current = studios.find(s => s.id === currentStudioId);
+      const descEl = document.getElementById('studioDesc');
+      if (descEl && current) descEl.textContent = current.description || '';
+      const meta = await api('/api/audit-logs/meta');
+      actionLabels = meta.actionLabels || {};
+      actionTypes = meta.actionTypes || {};
+      renderActionFilter();
+      await load();
     }
 
     function getActionLabel(type) {
@@ -1315,6 +1479,7 @@ function auditLogsPage() {
     });
 
     (async function init() {
+      await loadStudios();
       const meta = await api('/api/audit-logs/meta');
       actionLabels = meta.actionLabels || {};
       actionTypes = meta.actionTypes || {};
@@ -1329,46 +1494,50 @@ function auditLogsPage() {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    const studioId = url.searchParams.get("studioId") || "default";
 
     if (await serveStatic(req, res, url)) return;
 
-    const defectResult = await handleDefectsRoutes(req, res, url);
+    const studioResult = await handleStudioRoutes(req, res, url);
+    if (studioResult !== null) return;
+
+    const defectResult = await handleDefectsRoutes(req, res, url, studioId);
     if (defectResult !== null) return;
 
-    const batchResult = await handleBatchRoutes(req, res, url);
+    const batchResult = await handleBatchRoutes(req, res, url, studioId);
     if (batchResult !== null) return;
 
-    const boxSlotResult = await handleBoxSlotRoutes(req, res, url);
+    const boxSlotResult = await handleBoxSlotRoutes(req, res, url, studioId);
     if (boxSlotResult !== null) return;
 
-    const templateResult = await handleTemplateRoutes(req, res, url);
+    const templateResult = await handleTemplateRoutes(req, res, url, studioId);
     if (templateResult !== null) return;
 
-    const backupResult = await handleBackupRoutes(req, res, url);
+    const backupResult = await handleBackupRoutes(req, res, url, studioId);
     if (backupResult !== null) return;
 
-    const db = await loadDb();
+    const db = await loadDb(studioId);
 
-    const deliveryBatchResult = await handleDeliveryBatchRoutes(req, res, url, db.items);
+    const deliveryBatchResult = await handleDeliveryBatchRoutes(req, res, url, db.items, studioId);
     if (deliveryBatchResult !== null) return;
-    const templateDb = await loadTemplates();
+    const templateDb = await loadTemplates(studioId);
 
     if (req.method === "GET" && url.pathname === "/") return html(res, page());
     if (req.method === "GET" && url.pathname === "/api/items") {
-      const enriched = await Promise.all(db.items.map(summarizeItem));
+      const enriched = await Promise.all(db.items.map(i => summarizeItem(i, studioId)));
       return send(res, 200, enriched);
     }
     if (req.method === "POST" && url.pathname === "/api/items") {
       const input = await body(req);
       let item = { id: newId(), ...input, logs: [{ at: new Date().toISOString(), step: "建档", note: "创建底片" }] };
       if (input.templateId) {
-        const { item: templatedItem } = await createItemWithTemplate(item, input.templateId, templateDb);
+        const { item: templatedItem } = await createItemWithTemplate(item, input.templateId, templateDb, studioId);
         item = templatedItem;
       }
       db.items.unshift(item);
-      await saveDb(db);
-      await syncSlotOccupancy();
-      await auditCreateItem(item);
+      await saveDb(db, studioId);
+      await syncSlotOccupancy(studioId);
+      await auditCreateItem(item, studioId);
       return send(res, 201, item);
     }
     const patch = url.pathname.match(/^\/api\/items\/([^/]+)$/);
@@ -1387,17 +1556,17 @@ const server = http.createServer(async (req, res) => {
       Object.assign(item, raw);
       item.logs ||= [];
       item.logs.push({ at: new Date().toISOString(), step: "状态", note: "更新为" + item.status });
-      await saveDb(db);
-      await syncSlotOccupancy();
+      await saveDb(db, studioId);
+      await syncSlotOccupancy(studioId);
       if (raw.status && oldStatus !== raw.status) {
         const extraChanges = { before: {}, after: {} };
         if (raw.box !== undefined && oldBox !== raw.box) {
           extraChanges.before.box = oldBox;
           extraChanges.after.box = raw.box;
         }
-        await auditUpdateStatus(item, oldStatus, raw.status, extraChanges);
+        await auditUpdateStatus(item, oldStatus, raw.status, extraChanges, studioId);
       } else if (raw.box !== undefined && oldBox !== raw.box) {
-        await auditUpdateField(item, "box", oldBox, raw.box);
+        await auditUpdateField(item, "box", oldBox, raw.box, studioId);
       }
       return send(res, 200, item);
     }
@@ -1408,8 +1577,8 @@ const server = http.createServer(async (req, res) => {
       const input = await body(req);
       item.logs ||= [];
       item.logs.push({ at: new Date().toISOString(), step: input.step || "记录", note: input.note || "" });
-      await saveDb(db);
-      await auditAddNote(item, input.step || "记录", input.note || "");
+      await saveDb(db, studioId);
+      await auditAddNote(item, input.step || "记录", input.note || "", studioId);
       return send(res, 201, item);
     }
     const skipMatch = url.pathname.match(/^\/api\/items\/([^/]+)\/skip-step$/);
@@ -1419,13 +1588,13 @@ const server = http.createServer(async (req, res) => {
       const input = await body(req);
       const template = (templateDb.templates || []).find(t => t.id === item.templateId);
       const stepDef = template ? template.steps.find(s => s.key === input.stepKey) : null;
-      const result = await skipStep(item, input.stepKey, input.skipReason, templateDb);
+      const result = await skipStep(item, input.stepKey, input.skipReason, templateDb, studioId);
       if (!result.success) {
         return send(res, 400, { error: result.error });
       }
-      await saveDb(db);
+      await saveDb(db, studioId);
       if (stepDef) {
-        await auditSkipStep(item, stepDef.name, input.skipReason);
+        await auditSkipStep(item, stepDef.name, input.skipReason, studioId);
       }
       return send(res, 200, result.item);
     }
@@ -1435,13 +1604,13 @@ const server = http.createServer(async (req, res) => {
       if (!item) return send(res, 404, { error: "item_not_found" });
       const input = await body(req);
       const beforeItem = JSON.parse(JSON.stringify(item));
-      const result = await recordStepAction(item, input, templateDb);
+      const result = await recordStepAction(item, input, templateDb, studioId);
       if (result.error) {
         return send(res, 400, { error: result.error });
       }
-      await saveDb(db);
-      await syncSlotOccupancy();
-      await auditRecordStep(item, input, beforeItem, item);
+      await saveDb(db, studioId);
+      await syncSlotOccupancy(studioId);
+      await auditRecordStep(item, input, beforeItem, item, studioId);
       return send(res, 201, result.item);
     }
     if (req.method === "GET" && url.pathname === "/api/stats") return send(res, 200, computeStats(db.items));
@@ -1513,18 +1682,19 @@ const server = http.createServer(async (req, res) => {
 
         if (item.chemicalBatch && item.code) {
           try {
-            const batchDb = JSON.parse(await readFile(join(__dirname, "data", "chemical-batches.json"), "utf8"));
+            const batchPath = getDataPath(studioId, "chemical-batches.json");
+            const batchDb = JSON.parse(await readFile(batchPath, "utf8"));
             const batch = (batchDb.batches || []).find(b => b.batchNo === item.chemicalBatch);
             if (batch && !batch.negativeCodes.includes(item.code)) {
               batch.negativeCodes.push(item.code);
-              await writeFile(join(__dirname, "data", "chemical-batches.json"), JSON.stringify(batchDb, null, 2));
+              await writeFile(batchPath, JSON.stringify(batchDb, null, 2));
             }
           } catch (e) {}
         }
       }
 
-      await saveDb(db);
-      await syncSlotOccupancy();
+      await saveDb(db, studioId);
+      await syncSlotOccupancy(studioId);
 
       const importLog = {
         at: now,
@@ -1534,7 +1704,7 @@ const server = http.createServer(async (req, res) => {
         importedCodes: createdItems.map(i => i.code)
       };
 
-      await auditImport(createdItems.length, createdItems.map(i => i.code), importLog, createdItems);
+      await auditImport(createdItems.length, createdItems.map(i => i.code), importLog, createdItems, studioId);
 
       return send(res, 201, {
         success: true,
@@ -1562,7 +1732,7 @@ const server = http.createServer(async (req, res) => {
         actionType: url.searchParams.get("actionType") || "",
         dateKeyword: url.searchParams.get("dateKeyword") || ""
       };
-      const logs = await getAuditLogs(filters);
+      const logs = await getAuditLogs(filters, studioId);
       return send(res, 200, { logs, actionTypes: AUDIT_ACTION_TYPES, actionLabels: AUDIT_ACTION_LABELS });
     }
 
@@ -1575,4 +1745,8 @@ const server = http.createServer(async (req, res) => {
     send(res, 500, { error: error.message });
   }
 });
-server.listen(port, () => console.log("古法蓝晒底片整理室 listening on http://localhost:" + port));
+server.listen(port, async () => {
+  const migrated = await migrateOldFiles();
+  if (migrated) console.log("已将旧数据迁移至默认工作室目录");
+  console.log("古法蓝晒底片整理室 listening on http://localhost:" + port);
+});

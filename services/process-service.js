@@ -65,8 +65,8 @@ function validateRequiredFields(step, input) {
   return errors;
 }
 
-async function createItemWithTemplate(item, templateId, templateDb) {
-  const db = templateDb || await loadTemplates();
+async function createItemWithTemplate(item, templateId, templateDb, studioId) {
+  const db = templateDb || await loadTemplates(studioId);
   const templates = db.templates || [];
   const template = templateId
     ? templates.find(t => t.id === templateId)
@@ -90,12 +90,12 @@ async function createItemWithTemplate(item, templateId, templateDb) {
   return { item, templateUsed: true, template };
 }
 
-async function recordStepAction(item, input, templateDb) {
+async function recordStepAction(item, input, templateDb, studioId) {
   const now = new Date().toISOString();
   const stepName = input.step || "工艺";
 
   if (hasTemplate(item)) {
-    const db = templateDb || await loadTemplates();
+    const db = templateDb || await loadTemplates(studioId);
     const template = (db.templates || []).find(t => t.id === item.templateId);
     if (!template) {
       return { error: "关联的模板不存在，无法记录步骤" };
@@ -138,7 +138,7 @@ async function recordStepAction(item, input, templateDb) {
   item.logs.push({ at: now, step: stepName, note: logNote });
 
   if (hasTemplate(item)) {
-    const db = templateDb || await loadTemplates();
+    const db = templateDb || await loadTemplates(studioId);
     const template = (db.templates || []).find(t => t.id === item.templateId);
     const step = template ? getStepByName(template, stepName) : null;
     if (step) {
@@ -159,14 +159,14 @@ async function recordStepAction(item, input, templateDb) {
   return { item };
 }
 
-async function skipStep(item, stepKey, skipReason, templateDb) {
+async function skipStep(item, stepKey, skipReason, templateDb, studioId) {
   if (!skipReason || !skipReason.trim()) {
     return { success: false, error: "跳过步骤必须填写原因" };
   }
   if (!hasTemplate(item)) {
     return { success: false, error: "该底片未使用流程模板，无法跳过指定步骤" };
   }
-  const db = templateDb || await loadTemplates();
+  const db = templateDb || await loadTemplates(studioId);
   const template = (db.templates || []).find(t => t.id === item.templateId);
   if (!template) {
     return { success: false, error: "模板不存在" };
@@ -210,8 +210,8 @@ async function skipStep(item, stepKey, skipReason, templateDb) {
   return { success: true, item };
 }
 
-async function getItemProcessInfo(item, templateDb) {
-  const db = templateDb || await loadTemplates();
+async function getItemProcessInfo(item, templateDb, studioId) {
+  const db = templateDb || await loadTemplates(studioId);
   const templates = db.templates || [];
 
   if (!hasTemplate(item)) {

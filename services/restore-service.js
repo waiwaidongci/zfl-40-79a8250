@@ -4,15 +4,21 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readBackupFile, DATA_FILES, parseBackupFilename, createBackup } from "./backup-service.js";
 import { addAuditLog, AUDIT_ACTION_TYPES } from "../data/audit-logs.js";
+import { getDataPath } from "../data/studios.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = join(__dirname, "..", "data");
 
-async function getCurrentDataCounts() {
+function resolveDataPath(filename, studioId) {
+  if (studioId) return getDataPath(studioId, filename);
+  return join(dataDir, filename);
+}
+
+async function getCurrentDataCounts(studioId) {
   const counts = {};
 
   for (const file of DATA_FILES) {
-    const filePath = join(dataDir, file);
+    const filePath = resolveDataPath(file, studioId);
     if (!existsSync(filePath)) {
       counts[file] = { exists: false, count: 0 };
       continue;
@@ -84,7 +90,7 @@ function getBackupDataCounts(backupData) {
   return counts;
 }
 
-async function validateRestore(filename) {
+async function validateRestore(filename, studioId) {
   const info = parseBackupFilename(filename);
   if (!info) {
     throw new Error("无效的备份文件名");
@@ -101,7 +107,7 @@ async function validateRestore(filename) {
     throw new Error("备份文件格式无效");
   }
 
-  const currentCounts = await getCurrentDataCounts();
+  const currentCounts = await getCurrentDataCounts(studioId);
   const backupCounts = getBackupDataCounts(backupData);
 
   const mainDb = "cyanotype-negative-room.json";
@@ -119,7 +125,7 @@ async function validateRestore(filename) {
   };
 }
 
-async function performRestore(filename, confirmed = false) {
+async function performRestore(filename, confirmed, studioId) {
   if (!confirmed) {
     throw new Error("恢复操作需要确认");
   }
@@ -131,14 +137,14 @@ async function performRestore(filename, confirmed = false) {
 
   const backupData = await readBackupFile(filename);
 
-  const preRestoreBackup = await createBackup(`恢复前自动备份 - 恢复目标: ${info.timestamp}`);
+  const preRestoreBackup = await createBackup(`恢复前自动备份 - 恢复目标: ${info.timestamp}`, studioId);
 
   const restoredFiles = [];
   const errors = [];
 
   for (const [file, content] of Object.entries(backupData)) {
     if (file === "_meta") continue;
-    const filePath = join(dataDir, file);
+    const filePath = resolveDataPath(file, studioId);
     try {
       await writeFile(filePath, JSON.stringify(content, null, 2));
       restoredFiles.push(file);
@@ -161,7 +167,7 @@ async function performRestore(filename, confirmed = false) {
       errors
     },
     summary: `从备份「${filename}」恢复数据，恢复 ${restoredFiles.length} 个文件${errors.length ? `，失败 ${errors.length} 个` : ""}`
-  });
+  }, studioId);
 
   return {
     success: errors.length === 0,

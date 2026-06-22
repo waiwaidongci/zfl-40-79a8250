@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getDataPath, ensureStudioDir } from "./studios.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const dbPath = join(__dirname, "defects.json");
 
 const seed = {
   defects: [
@@ -51,7 +51,13 @@ const seed = {
   ]
 };
 
-async function loadDefects() {
+function getDbPath(studioId) {
+  if (studioId) return getDataPath(studioId, "defects.json");
+  return join(__dirname, "defects.json");
+}
+
+async function loadDefects(studioId) {
+  const dbPath = getDbPath(studioId);
   if (!existsSync(dbPath)) {
     await mkdir(dirname(dbPath), { recursive: true });
     await writeFile(dbPath, JSON.stringify(seed, null, 2));
@@ -59,7 +65,8 @@ async function loadDefects() {
   return JSON.parse(await readFile(dbPath, "utf8"));
 }
 
-async function saveDefects(db) {
+async function saveDefects(db, studioId) {
+  const dbPath = getDbPath(studioId);
   await writeFile(dbPath, JSON.stringify(db, null, 2));
 }
 

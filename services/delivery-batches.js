@@ -12,8 +12,8 @@ function findItemInBatch(batch, itemIdentifier) {
   return batch.items.find(i => i.itemId === itemIdentifier || i.code === itemIdentifier);
 }
 
-async function createBatch(input) {
-  const db = await loadDeliveryBatches();
+async function createBatch(input, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const batchNo = input.batchNo || ("D-" + new Date().toISOString().slice(0,10).replace(/-/g,"") + "-" + String(db.batches.length + 1).padStart(2, "0"));
 
   if (findBatchByBatchNo(db, batchNo)) {
@@ -31,12 +31,12 @@ async function createBatch(input) {
   };
 
   db.batches.unshift(batch);
-  await saveDeliveryBatches(db);
+  await saveDeliveryBatches(db, studioId);
   return { batch };
 }
 
-async function updateBatch(id, input) {
-  const db = await loadDeliveryBatches();
+async function updateBatch(id, input, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const batch = findBatchById(db, id);
   if (!batch) return { error: "batch_not_found" };
 
@@ -50,21 +50,21 @@ async function updateBatch(id, input) {
   if (input.deliveryDate !== undefined) batch.deliveryDate = input.deliveryDate;
   if (input.note !== undefined) batch.note = input.note;
 
-  await saveDeliveryBatches(db);
+  await saveDeliveryBatches(db, studioId);
   return { batch };
 }
 
-async function deleteBatch(id) {
-  const db = await loadDeliveryBatches();
+async function deleteBatch(id, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const idx = db.batches.findIndex(b => b.id === id);
   if (idx === -1) return { error: "batch_not_found" };
   const removed = db.batches.splice(idx, 1)[0];
-  await saveDeliveryBatches(db);
+  await saveDeliveryBatches(db, studioId);
   return { batch: removed };
 }
 
-async function addItemToBatch(batchId, itemData, allItems) {
-  const db = await loadDeliveryBatches();
+async function addItemToBatch(batchId, itemData, allItems, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const batch = findBatchById(db, batchId);
   if (!batch) return { error: "batch_not_found" };
 
@@ -88,12 +88,12 @@ async function addItemToBatch(batchId, itemData, allItems) {
   };
 
   batch.items.push(batchItem);
-  await saveDeliveryBatches(db);
+  await saveDeliveryBatches(db, studioId);
   return { batch, addedItem: batchItem };
 }
 
-async function removeItemFromBatch(batchId, itemIdentifier) {
-  const db = await loadDeliveryBatches();
+async function removeItemFromBatch(batchId, itemIdentifier, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const batch = findBatchById(db, batchId);
   if (!batch) return { error: "batch_not_found" };
 
@@ -101,36 +101,36 @@ async function removeItemFromBatch(batchId, itemIdentifier) {
   if (idx === -1) return { error: "item_not_in_batch" };
 
   const removed = batch.items.splice(idx, 1)[0];
-  await saveDeliveryBatches(db);
+  await saveDeliveryBatches(db, studioId);
   return { batch, removedItem: removed };
 }
 
-async function confirmItemInBatch(batchId, itemIdentifier, confirmed = true) {
-  const db = await loadDeliveryBatches();
+async function confirmItemInBatch(batchId, itemIdentifier, confirmed, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const batch = findBatchById(db, batchId);
   if (!batch) return { error: "batch_not_found" };
 
   const item = findItemInBatch(batch, itemIdentifier);
   if (!item) return { error: "item_not_in_batch" };
 
-  item.confirmed = confirmed;
-  await saveDeliveryBatches(db);
+  item.confirmed = confirmed !== undefined ? confirmed : true;
+  await saveDeliveryBatches(db, studioId);
   return { batch, item };
 }
 
-async function removeUnconfirmedItems(batchId) {
-  const db = await loadDeliveryBatches();
+async function removeUnconfirmedItems(batchId, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const batch = findBatchById(db, batchId);
   if (!batch) return { error: "batch_not_found" };
 
   const removed = batch.items.filter(i => !i.confirmed);
   batch.items = batch.items.filter(i => i.confirmed);
-  await saveDeliveryBatches(db);
+  await saveDeliveryBatches(db, studioId);
   return { batch, removedCount: removed.length, removed };
 }
 
-async function getBatchWithDetails(batchId, allItems) {
-  const db = await loadDeliveryBatches();
+async function getBatchWithDetails(batchId, allItems, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   const batch = findBatchById(db, batchId);
   if (!batch) return { error: "batch_not_found" };
 
@@ -152,8 +152,8 @@ async function getBatchWithDetails(batchId, allItems) {
   };
 }
 
-async function findBatchForItem(itemIdentifier) {
-  const db = await loadDeliveryBatches();
+async function findBatchForItem(itemIdentifier, studioId) {
+  const db = await loadDeliveryBatches(studioId);
   for (const batch of db.batches) {
     const found = findItemInBatch(batch, itemIdentifier);
     if (found) {

@@ -2,9 +2,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getDataPath, ensureStudioDir } from "./studios.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const auditDbPath = join(__dirname, "audit-logs.json");
 
 const AUDIT_ACTION_TYPES = {
   CREATE: "create",
@@ -32,31 +32,38 @@ const AUDIT_ACTION_LABELS = {
   [AUDIT_ACTION_TYPES.DELETE_BACKUP]: "删除备份"
 };
 
-async function loadAuditDb() {
-  if (!existsSync(auditDbPath)) {
-    await writeFile(auditDbPath, JSON.stringify({ logs: [] }, null, 2));
+function getAuditDbPath(studioId) {
+  if (studioId) return getDataPath(studioId, "audit-logs.json");
+  return join(__dirname, "audit-logs.json");
+}
+
+async function loadAuditDb(studioId) {
+  const dbPath = getAuditDbPath(studioId);
+  if (!existsSync(dbPath)) {
+    await writeFile(dbPath, JSON.stringify({ logs: [] }, null, 2));
   }
-  return JSON.parse(await readFile(auditDbPath, "utf8"));
+  return JSON.parse(await readFile(dbPath, "utf8"));
 }
 
-async function saveAuditDb(db) {
-  await writeFile(auditDbPath, JSON.stringify(db, null, 2));
+async function saveAuditDb(db, studioId) {
+  const dbPath = getAuditDbPath(studioId);
+  await writeFile(dbPath, JSON.stringify(db, null, 2));
 }
 
-async function addAuditLog(logEntry) {
-  const db = await loadAuditDb();
+async function addAuditLog(logEntry, studioId) {
+  const db = await loadAuditDb(studioId);
   const entry = {
     id: "AUD-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6),
     timestamp: new Date().toISOString(),
     ...logEntry
   };
   db.logs.unshift(entry);
-  await saveAuditDb(db);
+  await saveAuditDb(db, studioId);
   return entry;
 }
 
-async function getAuditLogs(filters = {}) {
-  const db = await loadAuditDb();
+async function getAuditLogs(filters = {}, studioId) {
+  const db = await loadAuditDb(studioId);
   let logs = db.logs || [];
 
   if (filters.itemCode) {

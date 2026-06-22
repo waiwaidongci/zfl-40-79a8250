@@ -11,8 +11,8 @@ async function body(req) {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
 }
 
-export async function handleBatchRoutes(req, res, url) {
-  const db = await loadBatches();
+export async function handleBatchRoutes(req, res, url, studioId) {
+  const db = await loadBatches(studioId);
 
   if (req.method === "GET" && url.pathname === "/api/chemical-batches") {
     const q = url.searchParams.get("q");
@@ -39,7 +39,7 @@ export async function handleBatchRoutes(req, res, url) {
       negativeCodes: input.negativeCodes || []
     };
     db.batches.push(batch);
-    await saveBatches(db);
+    await saveBatches(db, studioId);
     return send(res, 201, batch);
   }
 
@@ -54,7 +54,7 @@ export async function handleBatchRoutes(req, res, url) {
     if (input.formula !== undefined) batch.formula = input.formula;
     if (input.status !== undefined) batch.status = input.status;
     if (input.negativeCodes !== undefined) batch.negativeCodes = input.negativeCodes;
-    await saveBatches(db);
+    await saveBatches(db, studioId);
     return send(res, 200, batch);
   }
 
@@ -62,7 +62,7 @@ export async function handleBatchRoutes(req, res, url) {
     const idx = db.batches.findIndex(b => b.id === singleMatch[1]);
     if (idx === -1) return send(res, 404, { error: "batch_not_found" });
     const removed = db.batches.splice(idx, 1)[0];
-    await saveBatches(db);
+    await saveBatches(db, studioId);
     return send(res, 200, removed);
   }
 

@@ -1,0 +1,20 @@
+{
+  "batches": [
+    {
+      "id": "DB-001",
+      "batchNo": "D-20260620-01",
+      "customer": "示例客户A",
+      "deliveryDate": "2026-06-20",
+      "note": "首批交付样片",
+      "createdAt": "2026-06-20T10:00:00.000Z",
+      "items": [
+        {
+          "itemId": "CN-001",
+          "code": "CN-001",
+          "confirmed": true,
+          "addedAt": "2026-06-20T10:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}

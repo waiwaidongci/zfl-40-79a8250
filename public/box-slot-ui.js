@@ -2,8 +2,11 @@ window.BoxSlotUI = (function () {
   let slots = [];
 
   async function api(path, options) {
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
     const res = await fetch(
-      path,
+      studioPath,
       options && options.body
         ? { ...options, headers: { "Content-Type": "application/json" } }
         : options
@@ -239,6 +242,10 @@ window.BoxSlotUI = (function () {
     }
   }
 
+  function reset() {
+    slots = [];
+  }
+
   async function init() {
     await load();
     renderSlotList(slots);
@@ -247,6 +254,7 @@ window.BoxSlotUI = (function () {
 
   return {
     load,
+    reset,
     loadStats,
     getSlots,
     findById,

@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getDataPath, ensureStudioDir } from "./studios.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const dbPath = join(__dirname, "box-slots.json");
 
 const seed = {
   slots: [
@@ -32,7 +32,13 @@ const seed = {
   ]
 };
 
-async function loadBoxSlots() {
+function getDbPath(studioId) {
+  if (studioId) return getDataPath(studioId, "box-slots.json");
+  return join(__dirname, "box-slots.json");
+}
+
+async function loadBoxSlots(studioId) {
+  const dbPath = getDbPath(studioId);
   if (!existsSync(dbPath)) {
     await mkdir(dirname(dbPath), { recursive: true });
     await writeFile(dbPath, JSON.stringify(seed, null, 2));
@@ -40,7 +46,8 @@ async function loadBoxSlots() {
   return JSON.parse(await readFile(dbPath, "utf8"));
 }
 
-async function saveBoxSlots(db) {
+async function saveBoxSlots(db, studioId) {
+  const dbPath = getDbPath(studioId);
   await writeFile(dbPath, JSON.stringify(db, null, 2));
 }
 

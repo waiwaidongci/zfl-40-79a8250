@@ -11,8 +11,8 @@ async function body(req) {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
 }
 
-export async function handleBoxSlotRoutes(req, res, url) {
-  const db = await loadBoxSlots();
+export async function handleBoxSlotRoutes(req, res, url, studioId) {
+  const db = await loadBoxSlots(studioId);
 
   if (req.method === "GET" && url.pathname === "/api/box-slots") {
     const q = url.searchParams.get("q");
@@ -46,7 +46,7 @@ export async function handleBoxSlotRoutes(req, res, url) {
       remark: input.remark || ""
     };
     db.slots.push(slot);
-    await saveBoxSlots(db);
+    await saveBoxSlots(db, studioId);
     return send(res, 201, slot);
   }
 
@@ -60,7 +60,7 @@ export async function handleBoxSlotRoutes(req, res, url) {
     if (input.capacity !== undefined) slot.capacity = input.capacity;
     if (input.currentCount !== undefined) slot.currentCount = input.currentCount;
     if (input.remark !== undefined) slot.remark = input.remark;
-    await saveBoxSlots(db);
+    await saveBoxSlots(db, studioId);
     return send(res, 200, slot);
   }
 
@@ -68,7 +68,7 @@ export async function handleBoxSlotRoutes(req, res, url) {
     const idx = db.slots.findIndex(s => s.id === singleMatch[1]);
     if (idx === -1) return send(res, 404, { error: "slot_not_found" });
     const removed = db.slots.splice(idx, 1)[0];
-    await saveBoxSlots(db);
+    await saveBoxSlots(db, studioId);
     return send(res, 200, removed);
   }
 

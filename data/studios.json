@@ -1,0 +1,17 @@
+{
+  "studios": [
+    {
+      "id": "default",
+      "name": "默认工作室",
+      "description": "系统默认工作室",
+      "createdAt": "2026-06-22T00:00:00.000Z"
+    },
+    {
+      "id": "studio-1782109458820-edmkyj",
+      "name": "实验工作室",
+      "description": "用于实验性蓝晒工艺",
+      "createdAt": "2026-06-22T06:24:18.820Z"
+    }
+  ],
+  "migrated": true
+}

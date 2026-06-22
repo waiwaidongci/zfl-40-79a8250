@@ -2,11 +2,17 @@ import { readFile, writeFile, mkdir, readdir, stat, unlink } from "node:fs/promi
 import { existsSync } from "node:fs";
 import { join, dirname, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getDataPath } from "../data/studios.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const backupDir = join(__dirname, "..", "backups");
 const dataDir = join(__dirname, "..", "data");
 const mainDbFile = "cyanotype-negative-room.json";
+
+function resolveDataPath(filename, studioId) {
+  if (studioId) return getDataPath(studioId, filename);
+  return join(dataDir, filename);
+}
 
 const DATA_FILES = [
   "cyanotype-negative-room.json",
@@ -44,7 +50,7 @@ async function ensureBackupDir() {
   }
 }
 
-async function listBackups() {
+async function listBackups(studioId) {
   if (!existsSync(backupDir)) {
     return [];
   }
@@ -80,7 +86,7 @@ async function readBackupFile(filename) {
   return JSON.parse(await readFile(filePath, "utf8"));
 }
 
-async function getBackupSummary(filename) {
+async function getBackupSummary(filename, studioId) {
   const data = await readBackupFile(filename);
   const info = parseBackupFilename(filename);
   const summary = {
@@ -119,12 +125,12 @@ async function getBackupSummary(filename) {
   return summary;
 }
 
-async function createBackup(note = "") {
+async function createBackup(note = "", studioId) {
   await ensureBackupDir();
 
   const backupData = {};
   for (const file of DATA_FILES) {
-    const filePath = join(dataDir, file);
+    const filePath = resolveDataPath(file, studioId);
     if (existsSync(filePath)) {
       try {
         const content = JSON.parse(await readFile(filePath, "utf8"));
@@ -162,7 +168,7 @@ async function createBackup(note = "") {
   };
 }
 
-async function deleteBackup(filename) {
+async function deleteBackup(filename, studioId) {
   const info = parseBackupFilename(filename);
   if (!info) {
     throw new Error("无效的备份文件名");

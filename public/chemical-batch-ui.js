@@ -3,8 +3,11 @@ window.ChemicalBatchUI = (function () {
   const batchStatuses = ["可用", "即将过期", "已过期", "已废弃"];
 
   async function api(path, options) {
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
     const res = await fetch(
-      path,
+      studioPath,
       options && options.body
         ? { ...options, headers: { "Content-Type": "application/json" } }
         : options
@@ -271,6 +274,10 @@ window.ChemicalBatchUI = (function () {
     }
   }
 
+  function reset() {
+    batches = [];
+  }
+
   async function init() {
     await load();
     renderBatchList(batches);
@@ -279,6 +286,7 @@ window.ChemicalBatchUI = (function () {
 
   return {
     load,
+    reset,
     getBatches,
     findById,
     findByBatchNo,

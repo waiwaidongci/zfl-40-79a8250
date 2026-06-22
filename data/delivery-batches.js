@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getDataPath, ensureStudioDir } from "./studios.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const dbPath = join(__dirname, "delivery-batches.json");
 
 const seed = {
   batches: [
@@ -27,7 +27,13 @@ const seed = {
   ]
 };
 
-async function loadDeliveryBatches() {
+function getDbPath(studioId) {
+  if (studioId) return getDataPath(studioId, "delivery-batches.json");
+  return join(__dirname, "delivery-batches.json");
+}
+
+async function loadDeliveryBatches(studioId) {
+  const dbPath = getDbPath(studioId);
   if (!existsSync(dbPath)) {
     await mkdir(dirname(dbPath), { recursive: true });
     await writeFile(dbPath, JSON.stringify(seed, null, 2));
@@ -35,7 +41,8 @@ async function loadDeliveryBatches() {
   return JSON.parse(await readFile(dbPath, "utf8"));
 }
 
-async function saveDeliveryBatches(db) {
+async function saveDeliveryBatches(db, studioId) {
+  const dbPath = getDbPath(studioId);
   await writeFile(dbPath, JSON.stringify(db, null, 2));
 }
 

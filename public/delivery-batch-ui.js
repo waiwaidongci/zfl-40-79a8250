@@ -3,7 +3,10 @@ const DeliveryBatchUI = (function() {
   const itemBatchCache = new Map();
 
   function api(path, options) {
-    return fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options)
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
+    return fetch(studioPath, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options)
       .then(async res => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '请求失败');
@@ -110,8 +113,14 @@ const DeliveryBatchUI = (function() {
     });
   }
 
+  function reset() {
+    batches = [];
+    itemBatchCache.clear();
+  }
+
   return {
     load,
+    reset,
     getBatches,
     findByBatchNo,
     findById,

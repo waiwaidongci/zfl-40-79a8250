@@ -16,8 +16,11 @@ window.ProcessUI = (function () {
   ];
 
   async function api(path, options) {
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
     const res = await fetch(
-      path,
+      studioPath,
       options && options.body
         ? { ...options, headers: { "Content-Type": "application/json" } }
         : options
@@ -398,6 +401,12 @@ window.ProcessUI = (function () {
     }
   }
 
+  function reset() {
+    templates = [];
+    currentEditingTemplate = null;
+    editingStepIndex = -1;
+  }
+
   function init() {
     const listSel = document.getElementById('templateListSelect');
     if (listSel) {
@@ -424,6 +433,7 @@ window.ProcessUI = (function () {
 
   return {
     load,
+    reset,
     getTemplates,
     findById,
     getDefault,

@@ -2,8 +2,11 @@ window.DefectUI = (function () {
   let defects = [];
 
   async function api(path, options) {
+    const studioId = localStorage.getItem('currentStudioId') || 'default';
+    const sep = path.includes('?') ? '&' : '?';
+    const studioPath = path + sep + 'studioId=' + encodeURIComponent(studioId);
     const res = await fetch(
-      path,
+      studioPath,
       options && options.body
         ? { ...options, headers: { "Content-Type": "application/json" } }
         : options
@@ -190,6 +193,10 @@ window.DefectUI = (function () {
     }
   }
 
+  function reset() {
+    defects = [];
+  }
+
   async function init() {
     await load();
     renderDefectList(defects);
@@ -198,6 +205,7 @@ window.DefectUI = (function () {
 
   return {
     load,
+    reset,
     getDefects,
     findById,
     findByName,
