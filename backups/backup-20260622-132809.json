@@ -1,0 +1,570 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "createdAt": "2026-06-22T05:28:09.041Z",
+    "timestamp": "20260622-132809",
+    "note": "首次备份",
+    "dataFiles": [
+      "cyanotype-negative-room.json",
+      "audit-logs.json",
+      "box-slots.json",
+      "chemical-batches.json",
+      "defects.json",
+      "delivery-batches.json",
+      "process-templates.json"
+    ]
+  },
+  "cyanotype-negative-room.json": {
+    "items": [
+      {
+        "id": "CN-1782041231690-iy8bgjpef",
+        "code": "CN-012",
+        "plateSize": "24x30cm",
+        "chemicalBatch": "B-0624",
+        "exposure": "12分钟",
+        "waterSource": "矿泉水",
+        "box": "蓝盒B-03",
+        "status": "待入盒",
+        "defect": "",
+        "logs": [
+          {
+            "at": "2026-06-21T11:27:11.689Z",
+            "step": "建档",
+            "note": "批量导入创建底片"
+          }
+        ],
+        "steps": [],
+        "importedAt": "2026-06-21T11:27:11.689Z",
+        "importSource": "batch-import"
+      },
+      {
+        "id": "CN-1782041231688-j91bdrktc",
+        "code": "CN-011",
+        "plateSize": "20x25cm",
+        "chemicalBatch": "B-0620",
+        "exposure": "8分钟",
+        "waterSource": "井水过滤",
+        "box": "蓝盒B-02",
+        "status": "冲洗中",
+        "defect": "",
+        "logs": [
+          {
+            "at": "2026-06-21T11:27:11.688Z",
+            "step": "建档",
+            "note": "批量导入创建底片"
+          }
+        ],
+        "steps": [],
+        "importedAt": "2026-06-21T11:27:11.688Z",
+        "importSource": "batch-import"
+      },
+      {
+        "id": "CN-1782041231688-2rwzd1xd1",
+        "code": "CN-010",
+        "plateSize": "18x24cm",
+        "chemicalBatch": "B-0623",
+        "exposure": "10分钟",
+        "waterSource": "自来水",
+        "box": "蓝盒B-01",
+        "status": "待曝光",
+        "defect": "",
+        "logs": [
+          {
+            "at": "2026-06-21T11:27:11.688Z",
+            "step": "建档",
+            "note": "批量导入创建底片"
+          }
+        ],
+        "steps": [],
+        "importedAt": "2026-06-21T11:27:11.688Z",
+        "importSource": "batch-import"
+      },
+      {
+        "id": "CN-1782040987056-codk23dll",
+        "code": "CN-005",
+        "plateSize": "24x30cm",
+        "chemicalBatch": "B-0622",
+        "exposure": "12分钟",
+        "waterSource": "自来水",
+        "box": "蓝盒A-06",
+        "status": "待曝光",
+        "defect": "",
+        "logs": [
+          {
+            "at": "2026-06-21T11:23:07.056Z",
+            "step": "建档",
+            "note": "批量导入创建底片"
+          }
+        ],
+        "steps": [],
+        "importedAt": "2026-06-21T11:23:07.056Z",
+        "importSource": "batch-import"
+      },
+      {
+        "id": "CN-1782040987055-rv0szed6v",
+        "code": "CN-003",
+        "plateSize": "20x25cm",
+        "chemicalBatch": "B-0620",
+        "exposure": "8分钟",
+        "waterSource": "井水过滤",
+        "box": "蓝盒A-05",
+        "status": "冲洗中",
+        "defect": "",
+        "logs": [
+          {
+            "at": "2026-06-21T11:23:07.055Z",
+            "step": "建档",
+            "note": "批量导入创建底片"
+          }
+        ],
+        "steps": [],
+        "importedAt": "2026-06-21T11:23:07.055Z",
+        "importSource": "batch-import"
+      },
+      {
+        "id": "CN-1782040987055-b9z9864df",
+        "code": "CN-002",
+        "plateSize": "18x24cm",
+        "chemicalBatch": "B-0621",
+        "exposure": "10分钟",
+        "waterSource": "自来水",
+        "box": "蓝盒A-04",
+        "status": "待曝光",
+        "defect": "",
+        "logs": [
+          {
+            "at": "2026-06-21T11:23:07.055Z",
+            "step": "建档",
+            "note": "批量导入创建底片"
+          }
+        ],
+        "steps": [],
+        "importedAt": "2026-06-21T11:23:07.055Z",
+        "importSource": "batch-import"
+      },
+      {
+        "code": "CN-001",
+        "plateSize": "18x24cm",
+        "chemicalBatch": "B-0620",
+        "exposure": "8分钟",
+        "waterSource": "井水过滤",
+        "box": "蓝盒A-03",
+        "status": "待入盒",
+        "defect": "边角显影不均",
+        "logs": [
+          {
+            "at": "2026-06-20",
+            "step": "曝光",
+            "note": "阴天补时2分钟"
+          },
+          {
+            "at": "2026-06-21T03:50:30.042Z",
+            "step": "入盒",
+            "note": "放入A盒"
+          }
+        ],
+        "steps": [
+          {
+            "at": "2026-06-21T03:50:30.042Z",
+            "step": "入盒",
+            "developStatus": "稳定",
+            "defect": "边角显影不均",
+            "repair": "边角重涂",
+            "note": "放入A盒"
+          }
+        ]
+      }
+    ]
+  },
+  "audit-logs.json": {
+    "logs": [
+      {
+        "id": "AUD-1782106008693-nb9puo",
+        "timestamp": "2026-06-22T05:26:48.693Z",
+        "actionType": "delete_backup",
+        "itemCode": null,
+        "itemId": null,
+        "before": {
+          "filename": "backup-20260622-131749.json"
+        },
+        "after": null,
+        "summary": "删除备份「backup-20260622-131749.json」"
+      },
+      {
+        "id": "AUD-1782105949144-gnt700",
+        "timestamp": "2026-06-22T05:25:49.144Z",
+        "actionType": "restore",
+        "itemCode": null,
+        "itemId": null,
+        "before": {
+          "backupFilename": "backup-20260622-131843.json",
+          "backupTimestamp": "20260622-131843",
+          "preRestoreBackup": "backup-20260622-132549.json"
+        },
+        "after": {
+          "restoredFiles": [
+            "cyanotype-negative-room.json",
+            "audit-logs.json",
+            "box-slots.json",
+            "chemical-batches.json",
+            "defects.json",
+            "delivery-batches.json",
+            "process-templates.json"
+          ],
+          "errors": []
+        },
+        "summary": "从备份「backup-20260622-131843.json」恢复数据，恢复 7 个文件"
+      },
+      {
+        "id": "AUD-1782105469371-c3rp4c",
+        "timestamp": "2026-06-22T05:17:49.371Z",
+        "actionType": "backup",
+        "itemCode": null,
+        "itemId": null,
+        "before": null,
+        "after": {
+          "filename": "backup-20260622-131749.json",
+          "timestamp": "20260622-131749",
+          "note": "测试备份"
+        },
+        "summary": "创建备份「backup-20260622-131749.json」（备注：测试备份）"
+      }
+    ]
+  },
+  "box-slots.json": {
+    "slots": [
+      {
+        "id": "BS-001",
+        "slotNo": "蓝盒A-03",
+        "capacity": 20,
+        "currentCount": 1,
+        "remark": "蓝色编号盒，18x24cm底片专用"
+      },
+      {
+        "id": "BS-002",
+        "slotNo": "蓝盒A-05",
+        "capacity": 20,
+        "currentCount": 1,
+        "remark": "蓝色编号盒，24x30cm底片专用"
+      },
+      {
+        "id": "BS-003",
+        "slotNo": "木盒B-01",
+        "capacity": 10,
+        "currentCount": 0,
+        "remark": "木质存放盒，大尺寸底片"
+      }
+    ]
+  },
+  "chemical-batches.json": {
+    "batches": [
+      {
+        "id": "CB-001",
+        "batchNo": "B-0620",
+        "mixDate": "2026-06-20",
+        "formula": "标准蓝晒感光液配方",
+        "status": "可用",
+        "negativeCodes": [
+          "CN-001",
+          "CN-003",
+          "CN-011"
+        ]
+      }
+    ]
+  },
+  "defects.json": {
+    "defects": [
+      {
+        "id": "DF-001",
+        "name": "边角显影不均",
+        "severity": "中等",
+        "repair": "边角重涂感光液后二次曝光",
+        "keywords": [
+          "边角",
+          "显影",
+          "不均",
+          "重涂"
+        ],
+        "description": "底片四边或角落显影密度明显低于中心区域"
+      },
+      {
+        "id": "DF-002",
+        "name": "水渍斑痕",
+        "severity": "轻微",
+        "repair": "蒸馏水轻柔冲洗后吸水纸吸干",
+        "keywords": [
+          "水渍",
+          "斑痕",
+          "冲洗"
+        ],
+        "description": "冲洗或晾干过程中水滴在底片表面留下的圆形或条状斑痕"
+      },
+      {
+        "id": "DF-003",
+        "name": "药液起泡",
+        "severity": "严重",
+        "repair": "重新涂布并使用消泡剂处理",
+        "keywords": [
+          "药液",
+          "起泡",
+          "气泡",
+          "涂布"
+        ],
+        "description": "涂布感光液时产生气泡，干燥后形成圆形透光点"
+      },
+      {
+        "id": "DF-004",
+        "name": "曝光过度",
+        "severity": "严重",
+        "repair": "缩短曝光时间重新制作，或尝试减薄处理",
+        "keywords": [
+          "曝光",
+          "过度",
+          "密度",
+          "减薄"
+        ],
+        "description": "曝光时间过长导致底片整体密度过高、细节丢失"
+      },
+      {
+        "id": "DF-005",
+        "name": "底片划伤",
+        "severity": "中等",
+        "repair": "轻度可用透明修补胶填充后重新接触印相",
+        "keywords": [
+          "划伤",
+          "划痕",
+          "修补"
+        ],
+        "description": "玻璃板或感光层表面被硬物划出线状损伤"
+      }
+    ]
+  },
+  "delivery-batches.json": {
+    "batches": [
+      {
+        "id": "DB-1782097065057",
+        "batchNo": "D-20260622-02",
+        "customer": "测试客户B",
+        "deliveryDate": "2026-06-22",
+        "note": "API测试批次",
+        "createdAt": "2026-06-22T02:57:45.057Z",
+        "items": [
+          {
+            "itemId": "CN-1782041231690-iy8bgjpef",
+            "code": "CN-012",
+            "confirmed": false,
+            "addedAt": "2026-06-22T02:57:53.953Z"
+          }
+        ]
+      },
+      {
+        "id": "DB-001",
+        "batchNo": "D-20260620-01",
+        "customer": "示例客户A",
+        "deliveryDate": "2026-06-20",
+        "note": "首批交付样片",
+        "createdAt": "2026-06-20T10:00:00.000Z",
+        "items": [
+          {
+            "itemId": "CN-001",
+            "code": "CN-001",
+            "confirmed": true,
+            "addedAt": "2026-06-20T10:00:00.000Z"
+          }
+        ]
+      }
+    ]
+  },
+  "process-templates.json": {
+    "templates": [
+      {
+        "id": "PT-STANDARD",
+        "name": "标准蓝晒工艺",
+        "description": "蓝晒底片标准工艺流程：涂布 → 晾干 → 曝光 → 冲洗 → 复晒 → 入盒",
+        "isDefault": true,
+        "createdAt": "2026-06-21T00:00:00.000Z",
+        "steps": [
+          {
+            "key": "coating",
+            "name": "涂布",
+            "order": 1,
+            "description": "在洁净的玻璃板上均匀涂布感光液",
+            "requiredFields": [
+              "note"
+            ],
+            "optionalFields": [
+              "chemicalBatch",
+              "developStatus"
+            ],
+            "allowSkip": true,
+            "estimatedDuration": "15分钟"
+          },
+          {
+            "key": "drying",
+            "name": "晾干",
+            "order": 2,
+            "description": "在避光通风处自然晾干至完全干燥",
+            "requiredFields": [
+              "note"
+            ],
+            "optionalFields": [
+              "developStatus"
+            ],
+            "allowSkip": true,
+            "estimatedDuration": "30-60分钟"
+          },
+          {
+            "key": "exposure",
+            "name": "曝光",
+            "order": 3,
+            "description": "使用紫外光源进行接触印相曝光",
+            "requiredFields": [
+              "exposure",
+              "note"
+            ],
+            "optionalFields": [
+              "developStatus"
+            ],
+            "allowSkip": false,
+            "estimatedDuration": "5-15分钟"
+          },
+          {
+            "key": "developing",
+            "name": "冲洗",
+            "order": 4,
+            "description": "流水冲洗去除未反应的感光液，直至水流清澈",
+            "requiredFields": [
+              "waterSource",
+              "note"
+            ],
+            "optionalFields": [
+              "developStatus",
+              "defect",
+              "repair"
+            ],
+            "allowSkip": false,
+            "targetStatus": "冲洗中",
+            "estimatedDuration": "10-20分钟"
+          },
+          {
+            "key": "re-exposure",
+            "name": "复晒",
+            "order": 5,
+            "description": "冲洗后再次曝光加深色调",
+            "requiredFields": [
+              "note"
+            ],
+            "optionalFields": [
+              "exposure",
+              "developStatus",
+              "defect",
+              "repair"
+            ],
+            "allowSkip": true,
+            "estimatedDuration": "5-10分钟"
+          },
+          {
+            "key": "boxing",
+            "name": "入盒",
+            "order": 6,
+            "description": "完全干燥后放入指定存放盒位",
+            "requiredFields": [
+              "box",
+              "note"
+            ],
+            "optionalFields": [
+              "developStatus",
+              "defect",
+              "repair"
+            ],
+            "allowSkip": false,
+            "targetStatus": "待入盒",
+            "estimatedDuration": "5分钟"
+          }
+        ],
+        "statusTransitions": {
+          "涂布": "待曝光",
+          "晾干": "待曝光",
+          "曝光": "待曝光",
+          "冲洗": "冲洗中",
+          "复晒": "冲洗中",
+          "入盒": "待入盒",
+          "交付": "已交付"
+        }
+      },
+      {
+        "id": "PT-EXPRESS",
+        "name": "快速工艺流程",
+        "description": "简化版工艺流程，适合小批量加急底片",
+        "isDefault": false,
+        "createdAt": "2026-06-21T00:00:00.000Z",
+        "steps": [
+          {
+            "key": "coating",
+            "name": "涂布",
+            "order": 1,
+            "description": "涂布感光液",
+            "requiredFields": [
+              "note"
+            ],
+            "optionalFields": [
+              "chemicalBatch"
+            ],
+            "allowSkip": false,
+            "estimatedDuration": "15分钟"
+          },
+          {
+            "key": "exposure",
+            "name": "曝光",
+            "order": 2,
+            "description": "使用热风加速干燥后曝光",
+            "requiredFields": [
+              "exposure",
+              "note"
+            ],
+            "optionalFields": [],
+            "allowSkip": false,
+            "estimatedDuration": "10分钟"
+          },
+          {
+            "key": "developing",
+            "name": "冲洗",
+            "order": 3,
+            "description": "冲洗底片",
+            "requiredFields": [
+              "waterSource",
+              "note"
+            ],
+            "optionalFields": [
+              "defect"
+            ],
+            "allowSkip": false,
+            "targetStatus": "冲洗中",
+            "estimatedDuration": "15分钟"
+          },
+          {
+            "key": "boxing",
+            "name": "入盒",
+            "order": 4,
+            "description": "入盒交付",
+            "requiredFields": [
+              "box",
+              "note"
+            ],
+            "optionalFields": [],
+            "allowSkip": false,
+            "targetStatus": "待入盒",
+            "estimatedDuration": "5分钟"
+          }
+        ],
+        "statusTransitions": {
+          "涂布": "待曝光",
+          "曝光": "待曝光",
+          "冲洗": "冲洗中",
+          "入盒": "待入盒",
+          "交付": "已交付"
+        }
+      }
+    ]
+  }
+}

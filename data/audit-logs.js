@@ -13,7 +13,10 @@ const AUDIT_ACTION_TYPES = {
   RECORD_STEP: "record_step",
   SKIP_STEP: "skip_step",
   IMPORT: "import",
-  UPDATE_FIELD: "update_field"
+  UPDATE_FIELD: "update_field",
+  BACKUP: "backup",
+  RESTORE: "restore",
+  DELETE_BACKUP: "delete_backup"
 };
 
 const AUDIT_ACTION_LABELS = {
@@ -23,7 +26,10 @@ const AUDIT_ACTION_LABELS = {
   [AUDIT_ACTION_TYPES.RECORD_STEP]: "记录工艺步骤",
   [AUDIT_ACTION_TYPES.SKIP_STEP]: "跳过工艺步骤",
   [AUDIT_ACTION_TYPES.IMPORT]: "批量导入",
-  [AUDIT_ACTION_TYPES.UPDATE_FIELD]: "更新字段"
+  [AUDIT_ACTION_TYPES.UPDATE_FIELD]: "更新字段",
+  [AUDIT_ACTION_TYPES.BACKUP]: "创建备份",
+  [AUDIT_ACTION_TYPES.RESTORE]: "恢复备份",
+  [AUDIT_ACTION_TYPES.DELETE_BACKUP]: "删除备份"
 };
 
 async function loadAuditDb() {

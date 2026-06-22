@@ -8,6 +8,7 @@ import { handleBatchRoutes } from "./routes/chemical-batches.js";
 import { handleBoxSlotRoutes } from "./routes/box-slots.js";
 import { handleTemplateRoutes } from "./routes/process-templates.js";
 import { handleDeliveryBatchRoutes } from "./routes/delivery-batches.js";
+import { handleBackupRoutes } from "./routes/backups.js";
 import { loadBoxSlots, saveBoxSlots } from "./data/box-slots.js";
 import { loadTemplates } from "./data/process-templates.js";
 import {
@@ -197,6 +198,11 @@ function page() {
     .process-steps-bar .step-dot.current { background:#fff; border:2px solid var(--accent); color:var(--accent); font-weight:700; }
     .process-steps-bar .step-line { flex:1; min-width:10px; height:2px; align-self:center; background:var(--line); }
     .skip-btn { background:var(--warn); }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1000; }
+    .modal { background:#fff; border-radius:8px; padding:24px; max-width:600px; width:90%; max-height:80vh; overflow:auto; }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .modal-header h2 { margin:0; }
+    .hidden { display:none !important; }
     @media (max-width:900px){ header{display:block;padding:18px 16px;} main{grid-template-columns:1fr;padding:16px;} }
   </style>
 </head>
@@ -211,11 +217,13 @@ function page() {
         <button data-tab="batchTab">药液批次台账</button>
         <button data-tab="boxSlotTab">存放盒位管理</button>
         <button data-tab="processTab">工艺流程模板</button>
+        <button data-tab="backupTab">数据备份恢复</button>
       </div>
       <div id="defectTab" class="tab-content active"></div>
       <div id="batchTab" class="tab-content"></div>
       <div id="boxSlotTab" class="tab-content"></div>
       <div id="processTab" class="tab-content"></div>
+      <div id="backupTab" class="tab-content"></div>
     </section>
     <section>
       <div class="stats" id="stats"></div>
@@ -229,6 +237,7 @@ function page() {
   <script src="/public/box-slot-ui.js"></script>
   <script src="/public/process-ui.js"></script>
   <script src="/public/delivery-batch-ui.js"></script>
+  <script src="/public/backup-ui.js"></script>
   <script>
     const fields = [["code","底片编号","text"],["plateSize","玻璃板尺寸","text"],["chemicalBatch","药液批次","text"],["exposure","曝光时间","text"],["waterSource","冲洗水源","text"],["box","存放盒位","text"]];
     const stages = ["待曝光","冲洗中","待入盒","已交付"];
@@ -679,10 +688,12 @@ function page() {
     document.getElementById('batchTab').innerHTML = ChemicalBatchUI.renderPanel();
     document.getElementById('boxSlotTab').innerHTML = BoxSlotUI.renderPanel();
     document.getElementById('processTab').innerHTML = ProcessUI.renderManagerPanel();
+    document.getElementById('backupTab').innerHTML = BackupUI.renderPanel();
     DefectUI.init();
     ChemicalBatchUI.init();
     BoxSlotUI.init();
     ProcessUI.init();
+    BackupUI.init();
     load();
   </script>
 </body>
@@ -1049,6 +1060,9 @@ function auditLogsPage() {
     .pill.skip_step { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
     .pill.import { background:#f3e8f5; color:#7a3d7a; border-color:#dbb8dd; }
     .pill.update_field { background:#f5f0e8; color:#8a6d12; border-color:#ddd0b8; }
+    .pill.backup { background:#e6eef8; color:#3a5a8a; border-color:#b8cde8; }
+    .pill.restore { background:#fef3d6; color:#8a6d12; border-color:#f0d98a; }
+    .pill.delete_backup { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
     .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
     .toolbar select,.toolbar input { width:auto; min-width:160px; }
     .meta { color:var(--muted); font-size:13px; } .error { color:var(--warn); font-weight:600; }
@@ -1329,6 +1343,9 @@ const server = http.createServer(async (req, res) => {
 
     const templateResult = await handleTemplateRoutes(req, res, url);
     if (templateResult !== null) return;
+
+    const backupResult = await handleBackupRoutes(req, res, url);
+    if (backupResult !== null) return;
 
     const db = await loadDb();
 
