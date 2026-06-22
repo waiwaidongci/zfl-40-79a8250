@@ -75,8 +75,8 @@ async function auditSkipStep(item, stepName, skipReason) {
   });
 }
 
-async function auditImport(importedCount, importedCodes, importLog) {
-  return addAuditLog({
+async function auditImport(importedCount, importedCodes, importLog, importedItems = []) {
+  await addAuditLog({
     actionType: AUDIT_ACTION_TYPES.IMPORT,
     itemCode: null,
     itemId: null,
@@ -84,6 +84,17 @@ async function auditImport(importedCount, importedCodes, importLog) {
     after: { importedCount, importedCodes, importLog },
     summary: `批量导入 ${importedCount} 条底片：${importedCodes.join(", ")}`
   });
+
+  for (const item of importedItems) {
+    await addAuditLog({
+      actionType: AUDIT_ACTION_TYPES.CREATE,
+      itemCode: item.code || item.id,
+      itemId: item.id,
+      before: null,
+      after: summarizeItem(item),
+      summary: `新增底片 ${item.code || item.id}（批量导入）`
+    });
+  }
 }
 
 async function auditUpdateField(item, fieldName, oldValue, newValue) {

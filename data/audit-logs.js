@@ -55,9 +55,17 @@ async function getAuditLogs(filters = {}) {
 
   if (filters.itemCode) {
     const code = filters.itemCode.trim().toLowerCase();
-    logs = logs.filter(log => 
-      log.itemCode && log.itemCode.toLowerCase().includes(code)
-    );
+    logs = logs.filter(log => {
+      if (log.itemCode && log.itemCode.toLowerCase().includes(code)) {
+        return true;
+      }
+      if (log.actionType === AUDIT_ACTION_TYPES.IMPORT && log.after && log.after.importedCodes) {
+        return log.after.importedCodes.some(c => 
+          c.toLowerCase().includes(code)
+        );
+      }
+      return false;
+    });
   }
 
   if (filters.actionType) {

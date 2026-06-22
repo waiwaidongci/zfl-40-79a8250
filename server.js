@@ -1517,7 +1517,7 @@ const server = http.createServer(async (req, res) => {
         importedCodes: createdItems.map(i => i.code)
       };
 
-      await auditImport(createdItems.length, createdItems.map(i => i.code), importLog);
+      await auditImport(createdItems.length, createdItems.map(i => i.code), importLog, createdItems);
 
       return send(res, 201, {
         success: true,
