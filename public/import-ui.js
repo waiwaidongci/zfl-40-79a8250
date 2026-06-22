@@ -64,7 +64,13 @@ const ImportUI = (function() {
       updatePreviewBtn();
     };
 
+    let previewing = false;
+
     previewBtn.onclick = async () => {
+      if (previewing) return;
+      previewing = true;
+      previewBtn.disabled = true;
+
       try {
         let body, contentType;
         if (fileInput.files.length > 0) {
@@ -92,6 +98,9 @@ const ImportUI = (function() {
         step2.classList.remove('hidden');
       } catch (e) {
         alert('预览失败：' + e.message);
+      } finally {
+        previewing = false;
+        updatePreviewBtn();
       }
     };
 
@@ -105,12 +114,21 @@ const ImportUI = (function() {
       step1.classList.remove('hidden');
     };
 
+    let submitting = false;
+
     confirmBtn.onclick = async () => {
+      if (submitting) return;
       if (selectedRows.size === 0) {
         alert('请至少选择一条记录');
         return;
       }
       if (!confirm('确认导入 ' + selectedRows.size + ' 条底片记录？')) return;
+
+      submitting = true;
+      confirmBtn.disabled = true;
+      const countSpan = document.getElementById('confirmCount');
+      const originalText = countSpan.textContent;
+      countSpan.textContent = '(导入中...)';
 
       try {
         const result = await api('/api/import/confirm', {
@@ -140,6 +158,10 @@ const ImportUI = (function() {
         }).join('');
       } catch (e) {
         alert('导入失败：' + e.message);
+      } finally {
+        submitting = false;
+        confirmBtn.disabled = selectedRows.size === 0;
+        updateConfirmCount();
       }
     };
 
@@ -159,8 +181,8 @@ const ImportUI = (function() {
 
   function api(path, options) {
     return fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options)
-      .then(res => res.json())
-      .then(data => {
+      .then(async res => {
+        const data = await res.json();
         if (!res.ok) throw new Error(data.error || '请求失败');
         return data;
       });
