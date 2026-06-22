@@ -70,6 +70,9 @@ async function listBackups() {
 }
 
 async function readBackupFile(filename) {
+  if (!parseBackupFilename(filename)) {
+    throw new Error("无效的备份文件名");
+  }
   const filePath = join(backupDir, filename);
   if (!existsSync(filePath)) {
     throw new Error("备份文件不存在");
