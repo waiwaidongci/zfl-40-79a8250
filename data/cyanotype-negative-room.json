@@ -1,6 +1,132 @@
 {
   "items": [
     {
+      "id": "CN-1782041231690-iy8bgjpef",
+      "code": "CN-012",
+      "plateSize": "24x30cm",
+      "chemicalBatch": "B-0624",
+      "exposure": "12分钟",
+      "waterSource": "矿泉水",
+      "box": "蓝盒B-03",
+      "status": "待入盒",
+      "defect": "",
+      "logs": [
+        {
+          "at": "2026-06-21T11:27:11.689Z",
+          "step": "建档",
+          "note": "批量导入创建底片"
+        }
+      ],
+      "steps": [],
+      "importedAt": "2026-06-21T11:27:11.689Z",
+      "importSource": "batch-import"
+    },
+    {
+      "id": "CN-1782041231688-j91bdrktc",
+      "code": "CN-011",
+      "plateSize": "20x25cm",
+      "chemicalBatch": "B-0620",
+      "exposure": "8分钟",
+      "waterSource": "井水过滤",
+      "box": "蓝盒B-02",
+      "status": "冲洗中",
+      "defect": "",
+      "logs": [
+        {
+          "at": "2026-06-21T11:27:11.688Z",
+          "step": "建档",
+          "note": "批量导入创建底片"
+        }
+      ],
+      "steps": [],
+      "importedAt": "2026-06-21T11:27:11.688Z",
+      "importSource": "batch-import"
+    },
+    {
+      "id": "CN-1782041231688-2rwzd1xd1",
+      "code": "CN-010",
+      "plateSize": "18x24cm",
+      "chemicalBatch": "B-0623",
+      "exposure": "10分钟",
+      "waterSource": "自来水",
+      "box": "蓝盒B-01",
+      "status": "待曝光",
+      "defect": "",
+      "logs": [
+        {
+          "at": "2026-06-21T11:27:11.688Z",
+          "step": "建档",
+          "note": "批量导入创建底片"
+        }
+      ],
+      "steps": [],
+      "importedAt": "2026-06-21T11:27:11.688Z",
+      "importSource": "batch-import"
+    },
+    {
+      "id": "CN-1782040987056-codk23dll",
+      "code": "CN-005",
+      "plateSize": "24x30cm",
+      "chemicalBatch": "B-0622",
+      "exposure": "12分钟",
+      "waterSource": "自来水",
+      "box": "蓝盒A-06",
+      "status": "待曝光",
+      "defect": "",
+      "logs": [
+        {
+          "at": "2026-06-21T11:23:07.056Z",
+          "step": "建档",
+          "note": "批量导入创建底片"
+        }
+      ],
+      "steps": [],
+      "importedAt": "2026-06-21T11:23:07.056Z",
+      "importSource": "batch-import"
+    },
+    {
+      "id": "CN-1782040987055-rv0szed6v",
+      "code": "CN-003",
+      "plateSize": "20x25cm",
+      "chemicalBatch": "B-0620",
+      "exposure": "8分钟",
+      "waterSource": "井水过滤",
+      "box": "蓝盒A-05",
+      "status": "冲洗中",
+      "defect": "",
+      "logs": [
+        {
+          "at": "2026-06-21T11:23:07.055Z",
+          "step": "建档",
+          "note": "批量导入创建底片"
+        }
+      ],
+      "steps": [],
+      "importedAt": "2026-06-21T11:23:07.055Z",
+      "importSource": "batch-import"
+    },
+    {
+      "id": "CN-1782040987055-b9z9864df",
+      "code": "CN-002",
+      "plateSize": "18x24cm",
+      "chemicalBatch": "B-0621",
+      "exposure": "10分钟",
+      "waterSource": "自来水",
+      "box": "蓝盒A-04",
+      "status": "待曝光",
+      "defect": "",
+      "logs": [
+        {
+          "at": "2026-06-21T11:23:07.055Z",
+          "step": "建档",
+          "note": "批量导入创建底片"
+        }
+      ],
+      "steps": [],
+      "importedAt": "2026-06-21T11:23:07.055Z",
+      "importSource": "batch-import"
+    },
+    {
       "code": "CN-001",
       "plateSize": "18x24cm",
       "chemicalBatch": "B-0620",

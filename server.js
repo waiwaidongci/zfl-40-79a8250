@@ -16,6 +16,13 @@ import {
   getItemProcessInfo,
   hasTemplate
 } from "./services/process-service.js";
+import {
+  parseCSV,
+  mapHeadersToFields,
+  validateImport,
+  createImportItem,
+  FIELD_MAPPINGS
+} from "./services/import-service.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(__dirname, "data", "cyanotype-negative-room.json");
@@ -59,6 +66,38 @@ async function body(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+}
+async function rawBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+function parseMultipartFormData(buffer, boundary) {
+  const parts = [];
+  const boundaryBuffer = Buffer.from('--' + boundary);
+  let start = 0;
+  while (start < buffer.length) {
+    const boundaryPos = buffer.indexOf(boundaryBuffer, start);
+    if (boundaryPos === -1) break;
+    const nextBoundaryPos = buffer.indexOf(boundaryBuffer, boundaryPos + boundaryBuffer.length);
+    if (nextBoundaryPos === -1) break;
+    const partBuffer = buffer.slice(boundaryPos + boundaryBuffer.length, nextBoundaryPos);
+    const headerEnd = partBuffer.indexOf('\r\n\r\n');
+    if (headerEnd !== -1) {
+      const headers = partBuffer.slice(0, headerEnd).toString('utf8');
+      const content = partBuffer.slice(headerEnd + 4);
+      const nameMatch = headers.match(/name="([^"]+)"/);
+      const filenameMatch = headers.match(/filename="([^"]+)"/);
+      parts.push({
+        name: nameMatch ? nameMatch[1] : null,
+        filename: filenameMatch ? filenameMatch[1] : null,
+        content: content,
+        headers: headers
+      });
+    }
+    start = nextBoundaryPos;
+  }
+  return parts;
 }
 function send(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -151,7 +190,7 @@ function page() {
   </style>
 </head>
 <body>
-  <header><div><h1>古法蓝晒底片整理室</h1><div class="meta">底片任务、工艺步骤、缺陷和入盒交付</div></div><button id="reload">刷新</button></header>
+  <header><div><h1>古法蓝晒底片整理室</h1><div class="meta">底片任务、工艺步骤、缺陷和入盒交付</div></div><div style="display:flex;gap:8px"><button class="secondary" onclick="location.href='/import'">批量导入</button><button id="reload">刷新</button></div></header>
   <main>
     <section>
       <form id="createForm"><h2>新增底片</h2><label>工艺流程模板</label><select name="templateId" id="templateSelect"><option value="">不使用模板（兼容模式）</option></select><div id="fields"></div><label>初始状态</label><select name="status">${stages.map(s => '<option>'+s+'</option>').join('')}</select><button>保存底片</button></form>
@@ -562,6 +601,174 @@ function page() {
 </html>`;
 }
 
+function importPage() {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>批量导入底片 - 古法蓝晒底片整理室</title>
+  <style>
+    :root { --bg:#f1f3ef; --panel:#fff; --ink:#20241f; --muted:#687066; --line:#d4ddd0; --accent:#526f43; --warn:#9b4937; --success:#3d7a3d; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font-family:Arial,"PingFang SC",sans-serif; }
+    header { padding:22px 28px; background:#fff; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; align-items:center; }
+    h1 { margin:0; font-size:26px; } h2 { margin:0 0 12px; font-size:18px; } h3 { margin:0 0 8px; font-size:16px; }
+    main { padding:22px 28px; max-width:1200px; margin:0 auto; }
+    .panel,.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+    label { display:block; margin:10px 0 5px; color:var(--muted); font-size:13px; }
+    input[type="text"],textarea,select { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px; font:inherit; background:#fff; }
+    textarea { min-height:150px; font-family:monospace; font-size:13px; }
+    button { border:0; border-radius:6px; background:var(--accent); color:#fff; padding:10px 13px; font-weight:700; cursor:pointer; }
+    button.secondary { background:#69736a; } button.danger { background:var(--warn); } button:disabled { opacity:0.5; cursor:not-allowed; }
+    .tabs { display:flex; gap:0; margin-bottom:14px; flex-wrap:wrap; }
+    .tabs button { border-radius:6px 6px 0 0; background:var(--line); color:var(--ink); font-weight:400; padding:8px 14px; }
+    .tabs button.active { background:var(--panel); font-weight:700; border:1px solid var(--line); border-bottom:0; }
+    .tab-content { display:none; } .tab-content.active { display:block; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; text-align:center; }
+    .stat strong { display:block; font-size:24px; } .stat span { color:var(--muted); font-size:13px; }
+    .stat.warn strong { color:var(--warn); } .stat.success strong { color:var(--success); }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; font-size:13px; }
+    th { background:#f5f6f4; font-weight:600; } tr.invalid { background:#fde8e8; }
+    .mapped { color:var(--success); font-weight:600; } .unmapped { color:var(--warn); }
+    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; margin:2px; }
+    .pill.success { background:#e8f5e4; color:var(--success); border-color:#b8ddb0; }
+    .pill.warn { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
+    .pill.info { background:#e6eef8; color:#3a5a8a; border-color:#b8cde8; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+    .file-input { border:2px dashed var(--line); border-radius:8px; padding:30px; text-align:center; cursor:pointer; transition:all 0.2s; }
+    .file-input:hover { border-color:var(--accent); background:#f5f8f2; }
+    .file-input.dragover { border-color:var(--accent); background:#e8f0e2; }
+    .file-input input { display:none; }
+    .meta { color:var(--muted); font-size:13px; } .error { color:var(--warn); font-weight:600; }
+    .back-btn { text-decoration:none; color:var(--ink); display:inline-flex; align-items:center; gap:6px; }
+    .row-actions { display:flex; gap:6px; }
+    .row-actions input[type="checkbox"] { width:auto; }
+    .hidden { display:none !important; }
+    .field-map-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:center; }
+    .field-map-grid select { margin:0; }
+    .preview-section { margin-top:16px; }
+    .section-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .table-container { max-height:400px; overflow:auto; }
+    .success-banner { background:#e8f5e4; border:1px solid #b8ddb0; border-radius:8px; padding:16px; margin-bottom:16px; }
+    .success-banner h3 { color:var(--success); margin:0 0 8px; }
+    @media (max-width:900px){ header{display:block;padding:18px 16px;} main{padding:16px;} .field-map-grid{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <a href="/" class="back-btn">&larr; 返回整理室</a>
+      <h1 style="margin-top:8px">批量导入底片</h1>
+      <div class="meta">上传或粘贴CSV格式的底片清单，预览后批量创建</div>
+    </div>
+  </header>
+  <main>
+    <div id="step1" class="panel">
+      <h2>第一步：上传或粘贴CSV数据</h2>
+      <div class="tabs">
+        <button class="active" data-tab="uploadTab">上传文件</button>
+        <button data-tab="pasteTab">粘贴内容</button>
+      </div>
+      <div id="uploadTab" class="tab-content active">
+        <label class="file-input" id="dropZone">
+          <input type="file" id="fileInput" accept=".csv,text/csv">
+          <div style="font-size:16px;font-weight:600;">点击选择或拖拽CSV文件到此处</div>
+          <div class="meta" style="margin-top:6px">支持 .csv 格式文件</div>
+        </label>
+      </div>
+      <div id="pasteTab" class="tab-content">
+        <label>粘贴CSV内容</label>
+        <textarea id="csvTextarea" placeholder="底片编号,玻璃板尺寸,药液批次,曝光时间,冲洗水源,存放盒位,状态
+CN-002,18x24cm,B-0621,10分钟,自来水,蓝盒A-04,待曝光
+CN-003,20x25cm,B-0620,8分钟,井水过滤,蓝盒A-05,冲洗中"></textarea>
+      </div>
+      <div class="toolbar" style="margin-top:14px">
+        <button id="previewBtn" disabled>预览导入结果</button>
+        <button class="secondary" id="clearBtn">清空</button>
+      </div>
+      <div class="meta">
+        <b>支持的字段：</b>底片编号(code)、玻璃板尺寸(plateSize)、药液批次(chemicalBatch)、曝光时间(exposure)、冲洗水源(waterSource)、存放盒位(box)、状态(status)、缺陷类型(defect)<br>
+        <b>必填字段：</b>底片编号(code)<br>
+        <b>状态可选值：</b>待曝光、冲洗中、待入盒、已交付
+      </div>
+    </div>
+
+    <div id="step2" class="panel hidden">
+      <div class="section-title">
+        <h2>第二步：预览和确认</h2>
+        <button class="secondary" id="backBtn">返回修改</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span>总行数</span><strong id="totalRows">0</strong></div>
+        <div class="stat success"><span>将创建</span><strong id="willCreate">0</strong></div>
+        <div class="stat warn"><span>重复编号</span><strong id="duplicateCount">0</strong></div>
+        <div class="stat warn"><span>缺失必填</span><strong id="missingCount">0</strong></div>
+        <div class="stat"><span>未映射字段</span><strong id="unmappedCount">0</strong></div>
+      </div>
+
+      <div id="fieldMappingPanel" class="panel" style="margin-top:0">
+        <h3>字段映射</h3>
+        <div id="fieldMappingGrid" class="field-map-grid"></div>
+      </div>
+
+      <div id="warningsPanel" class="panel hidden" style="margin-top:0">
+        <h3><span class="pill warn">警告</span></h3>
+        <div id="warningsList"></div>
+      </div>
+
+      <div id="errorsPanel" class="panel hidden" style="margin-top:0">
+        <h3><span class="pill warn">错误</span></h3>
+        <div id="errorsList"></div>
+      </div>
+
+      <div class="preview-section">
+        <div class="section-title">
+          <h3>数据预览</h3>
+          <label style="margin:0"><input type="checkbox" id="selectAll" checked> 全部选中</label>
+        </div>
+        <div class="table-container">
+          <table id="previewTable">
+            <thead><tr id="previewHead"></tr></thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="toolbar" style="margin-top:16px">
+        <button id="confirmBtn" disabled>确认导入 <span id="confirmCount"></span></button>
+        <button class="secondary" id="cancelBtn">取消</button>
+      </div>
+    </div>
+
+    <div id="step3" class="hidden">
+      <div class="success-banner">
+        <h3>&check; 导入成功！</h3>
+        <div id="successMessage"></div>
+      </div>
+      <div class="panel">
+        <h3>已创建的底片</h3>
+        <div class="table-container">
+          <table id="resultTable">
+            <thead><tr><th>编号</th><th>尺寸</th><th>状态</th><th>盒位</th><th>建档日志</th></tr></thead>
+            <tbody id="resultBody"></tbody>
+          </table>
+        </div>
+        <div class="toolbar" style="margin-top:16px">
+          <button onclick="location.href='/'">返回整理室</button>
+          <button class="secondary" onclick="location.reload()">继续导入</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/public/import-ui.js"></script>
+</body>
+</html>`;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -654,6 +861,107 @@ const server = http.createServer(async (req, res) => {
       return send(res, 201, result.item);
     }
     if (req.method === "GET" && url.pathname === "/api/stats") return send(res, 200, computeStats(db.items));
+
+    if (req.method === "GET" && url.pathname === "/api/import/fields") {
+      return send(res, 200, { fields: FIELD_MAPPINGS });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/import/preview") {
+      let csvText = "";
+      const contentType = req.headers["content-type"] || "";
+
+      if (contentType.includes("multipart/form-data")) {
+        const boundaryMatch = contentType.match(/boundary=([^;]+)/);
+        if (!boundaryMatch) return send(res, 400, { error: "invalid_multipart_boundary" });
+        const boundary = boundaryMatch[1].trim();
+        const buffer = await rawBody(req);
+        const parts = parseMultipartFormData(buffer, boundary);
+        const filePart = parts.find(p => p.name === "file");
+        if (!filePart) return send(res, 400, { error: "no_file_uploaded" });
+        csvText = filePart.content.toString("utf8");
+      } else {
+        const input = await body(req);
+        csvText = input.csvText || "";
+      }
+
+      if (!csvText.trim()) return send(res, 400, { error: "empty_csv" });
+
+      const { headers, rows } = parseCSV(csvText);
+      if (headers.length === 0) return send(res, 400, { error: "invalid_csv_headers" });
+
+      const { mapping, unmapped } = mapHeadersToFields(headers);
+      const validation = validateImport(rows, db.items, mapping);
+
+      return send(res, 200, {
+        headers,
+        mapping,
+        unmapped,
+        ...validation
+      });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/import/confirm") {
+      const input = await body(req);
+      const { csvText, confirmedRows } = input;
+
+      if (!csvText || !confirmedRows || !Array.isArray(confirmedRows) || confirmedRows.length === 0) {
+        return send(res, 400, { error: "invalid_input" });
+      }
+
+      const { headers, rows } = parseCSV(csvText);
+      const { mapping } = mapHeadersToFields(headers);
+      const validation = validateImport(rows, db.items, mapping);
+
+      if (validation.errors.length > 0) {
+        return send(res, 400, { error: "validation_errors", details: validation.errors });
+      }
+
+      const createdItems = [];
+      const now = new Date().toISOString();
+
+      for (const confirmedRow of confirmedRows) {
+        const rowData = validation.validRows.find(r => r.row === confirmedRow);
+        if (!rowData) continue;
+
+        const item = createImportItem(rowData.data);
+        db.items.unshift(item);
+        createdItems.push(item);
+
+        if (item.chemicalBatch && item.code) {
+          try {
+            const batchDb = JSON.parse(await readFile(join(__dirname, "data", "chemical-batches.json"), "utf8"));
+            const batch = (batchDb.batches || []).find(b => b.batchNo === item.chemicalBatch);
+            if (batch && !batch.negativeCodes.includes(item.code)) {
+              batch.negativeCodes.push(item.code);
+              await writeFile(join(__dirname, "data", "chemical-batches.json"), JSON.stringify(batchDb, null, 2));
+            }
+          } catch (e) {}
+        }
+      }
+
+      await saveDb(db);
+      await syncSlotOccupancy();
+
+      const importLog = {
+        at: now,
+        step: "批量导入",
+        note: `成功导入 ${createdItems.length} 条底片记录`,
+        importedCount: createdItems.length,
+        importedCodes: createdItems.map(i => i.code)
+      };
+
+      return send(res, 201, {
+        success: true,
+        created: createdItems.length,
+        items: createdItems,
+        importLog
+      });
+    }
+
+    if (req.method === "GET" && url.pathname === "/import") {
+      return html(res, importPage());
+    }
+
     send(res, 404, { error: "not_found" });
   } catch (error) {
     send(res, 500, { error: error.message });

@@ -7,7 +7,9 @@
       "formula": "标准蓝晒感光液配方",
       "status": "可用",
       "negativeCodes": [
-        "CN-001"
+        "CN-001",
+        "CN-003",
+        "CN-011"
       ]
     }
   ]
