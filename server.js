@@ -564,8 +564,14 @@ function page() {
       await ProcessUI.load();
       await DeliveryBatchUI.load();
       const deliveredIds = items.filter(i => i.status === '已交付').map(i => i.id || i.code);
+      const itemKeys = new Set(items.map(i => i.id || i.code));
+      const archivedIds = DeliveryBatchUI.getBatches().flatMap(batch => (batch.items || []).map(batchItem => {
+        if (itemKeys.has(batchItem.itemId)) return batchItem.itemId;
+        if (itemKeys.has(batchItem.code)) return batchItem.code;
+        return batchItem.itemId || batchItem.code;
+      }).filter(Boolean));
       const cachedIds = Object.keys(itemBatchMap).filter(k => itemBatchMap[k]);
-      const idsToLookup = [...new Set([...deliveredIds, ...cachedIds])];
+      const idsToLookup = [...new Set([...deliveredIds, ...archivedIds, ...cachedIds])];
       if (idsToLookup.length > 0) {
         itemBatchMap = await DeliveryBatchUI.lookupItemBatches(idsToLookup);
       } else {
