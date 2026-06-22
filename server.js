@@ -24,6 +24,16 @@ import {
   createImportItem,
   FIELD_MAPPINGS
 } from "./services/import-service.js";
+import {
+  auditCreateItem,
+  auditUpdateStatus,
+  auditAddNote,
+  auditRecordStep,
+  auditSkipStep,
+  auditImport,
+  auditUpdateField
+} from "./services/audit-service.js";
+import { getAuditLogs, AUDIT_ACTION_TYPES, AUDIT_ACTION_LABELS } from "./data/audit-logs.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(__dirname, "data", "cyanotype-negative-room.json");
@@ -191,7 +201,7 @@ function page() {
   </style>
 </head>
 <body>
-  <header><div><h1>古法蓝晒底片整理室</h1><div class="meta">底片任务、工艺步骤、缺陷和入盒交付</div></div><div style="display:flex;gap:8px"><button class="secondary" onclick="location.href='/delivery-list'">交付清单</button><button class="secondary" onclick="location.href='/import'">批量导入</button><button id="reload">刷新</button></div></header>
+  <header><div><h1>古法蓝晒底片整理室</h1><div class="meta">底片任务、工艺步骤、缺陷和入盒交付</div></div><div style="display:flex;gap:8px"><button class="secondary" onclick="location.href='/delivery-list'">交付清单</button><button class="secondary" onclick="location.href='/import'">批量导入</button><button class="secondary" onclick="location.href='/audit-logs'">审计日志</button><button id="reload">刷新</button></div></header>
   <main>
     <section>
       <form id="createForm"><h2>新增底片</h2><label>工艺流程模板</label><select name="templateId" id="templateSelect"><option value="">不使用模板（兼容模式）</option></select><div id="fields"></div><label>初始状态</label><select name="status">${stages.map(s => '<option>'+s+'</option>').join('')}</select><button>保存底片</button></form>
@@ -1002,6 +1012,306 @@ CN-003,20x25cm,B-0620,8分钟,井水过滤,蓝盒A-05,冲洗中"></textarea>
 </html>`;
 }
 
+function auditLogsPage() {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>操作审计日志 - 古法蓝晒底片整理室</title>
+  <style>
+    :root { --bg:#f1f3ef; --panel:#fff; --ink:#20241f; --muted:#687066; --line:#d4ddd0; --accent:#526f43; --warn:#9b4937; --success:#3d7a3d; --info:#3a5a8a; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font-family:Arial,"PingFang SC",sans-serif; }
+    header { padding:22px 28px; background:#fff; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; align-items:center; }
+    h1 { margin:0; font-size:26px; } h2 { margin:0 0 12px; font-size:18px; } h3 { margin:0 0 8px; font-size:16px; }
+    main { padding:22px 28px; max-width:1400px; margin:0 auto; }
+    .panel,.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+    label { display:block; margin:10px 0 5px; color:var(--muted); font-size:13px; }
+    input[type="text"],textarea,select { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px; font:inherit; background:#fff; }
+    button { border:0; border-radius:6px; background:var(--accent); color:#fff; padding:10px 13px; font-weight:700; cursor:pointer; }
+    button.secondary { background:#69736a; } button.danger { background:var(--warn); } button:disabled { opacity:0.5; cursor:not-allowed; } button.small { padding:6px 10px; font-size:12px; font-weight:600; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; text-align:center; }
+    .stat strong { display:block; font-size:24px; } .stat span { color:var(--muted); font-size:13px; }
+    .stat.warn strong { color:var(--warn); } .stat.success strong { color:var(--success); }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; font-size:13px; vertical-align:top; }
+    th { background:#f5f6f4; font-weight:600; white-space:nowrap; } tr:nth-child(even) { background:#fafbf9; }
+    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; margin:2px; }
+    .pill.success { background:#e8f5e4; color:var(--success); border-color:#b8ddb0; }
+    .pill.warn { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
+    .pill.info { background:#e6eef8; color:var(--info); border-color:#b8cde8; }
+    .pill.muted { background:#f0f1ef; color:var(--muted); }
+    .pill.create { background:#e8f5e4; color:var(--success); border-color:#b8ddb0; }
+    .pill.update_status { background:#e6eef8; color:var(--info); border-color:#b8cde8; }
+    .pill.add_note { background:#fef3d6; color:#8a6d12; border-color:#f0d98a; }
+    .pill.record_step { background:#eaf2e6; color:var(--accent); border-color:#b8ddb0; }
+    .pill.skip_step { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
+    .pill.import { background:#f3e8f5; color:#7a3d7a; border-color:#dbb8dd; }
+    .pill.update_field { background:#f5f0e8; color:#8a6d12; border-color:#ddd0b8; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+    .toolbar select,.toolbar input { width:auto; min-width:160px; }
+    .meta { color:var(--muted); font-size:13px; } .error { color:var(--warn); font-weight:600; }
+    .back-btn { text-decoration:none; color:var(--ink); display:inline-flex; align-items:center; gap:6px; }
+    .row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .hidden { display:none !important; }
+    .empty-state { text-align:center; padding:40px; color:var(--muted); }
+    .diff-block { background:#fafbf9; border:1px solid var(--line); border-radius:4px; padding:8px; margin:4px 0; font-size:12px; font-family:monospace; max-height:120px; overflow:auto; }
+    .diff-label { font-weight:600; color:var(--muted); margin-bottom:4px; }
+    .diff-before { color:var(--warn); }
+    .diff-after { color:var(--success); }
+    .summary-cell { max-width:300px; }
+    .code-cell { font-family:monospace; font-size:12px; }
+    @media (max-width:900px){ header{display:block;padding:18px 16px;} main{padding:16px;} .toolbar{flex-direction:column;align-items:stretch;} .toolbar select,.toolbar input{width:100%;} }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <a href="/" class="back-btn">&larr; 返回整理室</a>
+      <h1 style="margin-top:8px">操作审计日志</h1>
+      <div class="meta">记录所有关键操作的时间、对象、动作类型和变更摘要</div>
+    </div>
+    <div style="display:flex;gap:8px"><button class="secondary" id="reload">刷新</button><button id="clearFilters">清除筛选</button></div>
+  </header>
+  <main>
+    <div class="panel">
+      <h2>筛选条件</h2>
+      <div class="toolbar">
+        <div style="flex:1;min-width:200px">
+          <label>底片编号</label>
+          <input id="codeFilter" placeholder="输入底片编号关键词">
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label>动作类型</label>
+          <select id="actionFilter">
+            <option value="">全部类型</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label>日期关键词</label>
+          <input id="dateFilter" placeholder="如 2026-06 或 2026-06-22">
+        </div>
+        <div style="align-self:flex-end">
+          <button id="applyFilter">查询</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h2 style="margin:0">审计日志列表</h2>
+        <span id="resultCount" class="meta"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="auditTable">
+          <thead>
+            <tr>
+              <th style="width:180px">时间</th>
+              <th style="width:120px">底片编号</th>
+              <th style="width:120px">动作类型</th>
+              <th>操作摘要</th>
+              <th style="width:100px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="auditBody">
+          </tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="empty-state hidden">
+        暂无审计记录
+      </div>
+    </div>
+  </main>
+
+  <div id="detailModal" class="modal-backdrop hidden">
+    <div class="modal" style="max-width:700px">
+      <div class="modal-header">
+        <h2 id="modalTitle">审计详情</h2>
+        <button class="secondary small" id="closeModal">×</button>
+      </div>
+      <div id="modalContent" style="max-height:60vh;overflow:auto"></div>
+    </div>
+  </div>
+
+  <style>
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1000; }
+    .modal { background:#fff; border-radius:8px; padding:24px; max-width:600px; width:90%; max-height:80vh; overflow:auto; }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .modal-header h2 { margin:0; }
+    .detail-grid { display:grid; grid-template-columns:100px 1fr; gap:8px 16px; font-size:13px; }
+    .detail-grid dt { color:var(--muted); font-weight:600; }
+    .detail-grid dd { margin:0; word-break:break-all; }
+    .json-pre { background:#f5f6f4; border:1px solid var(--line); border-radius:4px; padding:12px; font-family:monospace; font-size:12px; max-height:200px; overflow:auto; }
+  </style>
+
+  <script>
+    let allLogs = [];
+    let actionLabels = {};
+    let actionTypes = {};
+
+    async function api(path, options) {
+      const res = await fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '请求失败');
+      return data;
+    }
+
+    function getActionLabel(type) {
+      return actionLabels[type] || type;
+    }
+
+    function renderActionFilter() {
+      const sel = document.getElementById('actionFilter');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">全部类型</option>' +
+        Object.entries(actionLabels).map(([type, label]) => 
+          '<option value="' + type + '" ' + (type===cur?'selected':'') + '>' + label + '</option>'
+        ).join('');
+    }
+
+    function renderStats() {
+      const stats = {};
+      allLogs.forEach(log => {
+        stats[log.actionType] = (stats[log.actionType] || 0) + 1;
+      });
+      const statsEl = document.getElementById('stats');
+      statsEl.innerHTML = Object.entries(stats).map(([type, count]) => 
+        '<div class="stat"><span>' + getActionLabel(type) + '</span><strong>' + count + '</strong></div>'
+      ).join('');
+    }
+
+    function formatTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString('zh-CN', { 
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+    }
+
+    function renderTable(logs) {
+      const tbody = document.getElementById('auditBody');
+      const empty = document.getElementById('emptyState');
+      const resultCount = document.getElementById('resultCount');
+
+      if (logs.length === 0) {
+        tbody.innerHTML = '';
+        empty.classList.remove('hidden');
+        resultCount.textContent = '共 0 条记录';
+        return;
+      }
+
+      empty.classList.add('hidden');
+      resultCount.textContent = '共 ' + logs.length + ' 条记录';
+
+      tbody.innerHTML = logs.map(log => {
+        const code = log.itemCode || '-';
+        return '<tr>' +
+          '<td>' + formatTime(log.timestamp) + '</td>' +
+          '<td class="code-cell">' + code + '</td>' +
+          '<td><span class="pill ' + log.actionType + '">' + getActionLabel(log.actionType) + '</span></td>' +
+          '<td class="summary-cell">' + (log.summary || '') + '</td>' +
+          '<td><button class="secondary small" data-detail="' + log.id + '">详情</button></td>' +
+        '</tr>';
+      }).join('');
+
+      tbody.querySelectorAll('[data-detail]').forEach(btn => {
+        btn.onclick = () => showDetail(btn.dataset.detail);
+      });
+    }
+
+    function showDetail(logId) {
+      const log = allLogs.find(l => l.id === logId);
+      if (!log) return;
+
+      const modal = document.getElementById('detailModal');
+      const content = document.getElementById('modalContent');
+      const title = document.getElementById('modalTitle');
+
+      title.textContent = '审计详情 - ' + getActionLabel(log.actionType);
+
+      let html = '<dl class="detail-grid">' +
+        '<dt>记录ID</dt><dd>' + log.id + '</dd>' +
+        '<dt>操作时间</dt><dd>' + formatTime(log.timestamp) + '</dd>' +
+        '<dt>动作类型</dt><dd><span class="pill ' + log.actionType + '">' + getActionLabel(log.actionType) + '</span></dd>' +
+        '<dt>底片编号</dt><dd>' + (log.itemCode || '-') + '</dd>' +
+        '<dt>对象ID</dt><dd>' + (log.itemId || '-') + '</dd>' +
+        '<dt>操作摘要</dt><dd>' + (log.summary || '-') + '</dd>';
+
+      if (log.before) {
+        html += '<dt>变更前</dt><dd><pre class="json-pre diff-before">' + JSON.stringify(log.before, null, 2) + '</pre></dd>';
+      }
+      if (log.after) {
+        html += '<dt>变更后</dt><dd><pre class="json-pre diff-after">' + JSON.stringify(log.after, null, 2) + '</pre></dd>';
+      }
+
+      html += '</dl>';
+
+      content.innerHTML = html;
+      modal.classList.remove('hidden');
+    }
+
+    async function load() {
+      const codeFilter = document.getElementById('codeFilter').value.trim();
+      const actionFilter = document.getElementById('actionFilter').value;
+      const dateFilter = document.getElementById('dateFilter').value.trim();
+
+      const params = new URLSearchParams();
+      if (codeFilter) params.set('itemCode', codeFilter);
+      if (actionFilter) params.set('actionType', actionFilter);
+      if (dateFilter) params.set('dateKeyword', dateFilter);
+
+      const url = '/api/audit-logs' + (params.toString() ? '?' + params.toString() : '');
+      const data = await api(url);
+
+      allLogs = data.logs || [];
+      actionLabels = data.actionLabels || {};
+      actionTypes = data.actionTypes || {};
+
+      renderActionFilter();
+      renderStats();
+      renderTable(allLogs);
+    }
+
+    document.getElementById('applyFilter').onclick = load;
+    document.getElementById('reload').onclick = load;
+    document.getElementById('clearFilters').onclick = () => {
+      document.getElementById('codeFilter').value = '';
+      document.getElementById('actionFilter').value = '';
+      document.getElementById('dateFilter').value = '';
+      load();
+    };
+
+    document.getElementById('closeModal').onclick = () => {
+      document.getElementById('detailModal').classList.add('hidden');
+    };
+
+    document.getElementById('detailModal').onclick = (e) => {
+      if (e.target.id === 'detailModal') {
+        document.getElementById('detailModal').classList.add('hidden');
+      }
+    };
+
+    ['codeFilter', 'dateFilter'].forEach(id => {
+      document.getElementById(id).addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') load();
+      });
+    });
+
+    (async function init() {
+      const meta = await api('/api/audit-logs/meta');
+      actionLabels = meta.actionLabels || {};
+      actionTypes = meta.actionTypes || {};
+      renderActionFilter();
+      await load();
+    })();
+  </script>
+</body>
+</html>`;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -1041,6 +1351,7 @@ const server = http.createServer(async (req, res) => {
       db.items.unshift(item);
       await saveDb(db);
       await syncSlotOccupancy();
+      await auditCreateItem(item);
       return send(res, 201, item);
     }
     const patch = url.pathname.match(/^\/api\/items\/([^/]+)$/);
@@ -1054,11 +1365,23 @@ const server = http.createServer(async (req, res) => {
           if (key in raw) delete raw[key];
         }
       }
+      const oldStatus = item.status;
+      const oldBox = item.box;
       Object.assign(item, raw);
       item.logs ||= [];
       item.logs.push({ at: new Date().toISOString(), step: "状态", note: "更新为" + item.status });
       await saveDb(db);
       await syncSlotOccupancy();
+      if (raw.status && oldStatus !== raw.status) {
+        const extraChanges = { before: {}, after: {} };
+        if (raw.box !== undefined && oldBox !== raw.box) {
+          extraChanges.before.box = oldBox;
+          extraChanges.after.box = raw.box;
+        }
+        await auditUpdateStatus(item, oldStatus, raw.status, extraChanges);
+      } else if (raw.box !== undefined && oldBox !== raw.box) {
+        await auditUpdateField(item, "box", oldBox, raw.box);
+      }
       return send(res, 200, item);
     }
     const log = url.pathname.match(/^\/api\/items\/([^/]+)\/logs$/);
@@ -1069,6 +1392,7 @@ const server = http.createServer(async (req, res) => {
       item.logs ||= [];
       item.logs.push({ at: new Date().toISOString(), step: input.step || "记录", note: input.note || "" });
       await saveDb(db);
+      await auditAddNote(item, input.step || "记录", input.note || "");
       return send(res, 201, item);
     }
     const skipMatch = url.pathname.match(/^\/api\/items\/([^/]+)\/skip-step$/);
@@ -1076,11 +1400,16 @@ const server = http.createServer(async (req, res) => {
       const item = db.items.find(x => x.id === skipMatch[1] || x.code === skipMatch[1]);
       if (!item) return send(res, 404, { error: "item_not_found" });
       const input = await body(req);
+      const template = (templateDb.templates || []).find(t => t.id === item.templateId);
+      const stepDef = template ? template.steps.find(s => s.key === input.stepKey) : null;
       const result = await skipStep(item, input.stepKey, input.skipReason, templateDb);
       if (!result.success) {
         return send(res, 400, { error: result.error });
       }
       await saveDb(db);
+      if (stepDef) {
+        await auditSkipStep(item, stepDef.name, input.skipReason);
+      }
       return send(res, 200, result.item);
     }
     const action = url.pathname.match(/^\/api\/items\/([^/]+)\/action$/);
@@ -1088,12 +1417,14 @@ const server = http.createServer(async (req, res) => {
       const item = db.items.find(x => x.id === action[1] || x.code === action[1]);
       if (!item) return send(res, 404, { error: "item_not_found" });
       const input = await body(req);
+      const beforeItem = JSON.parse(JSON.stringify(item));
       const result = await recordStepAction(item, input, templateDb);
       if (result.error) {
         return send(res, 400, { error: result.error });
       }
       await saveDb(db);
       await syncSlotOccupancy();
+      await auditRecordStep(item, input, beforeItem, item);
       return send(res, 201, result.item);
     }
     if (req.method === "GET" && url.pathname === "/api/stats") return send(res, 200, computeStats(db.items));
@@ -1186,6 +1517,8 @@ const server = http.createServer(async (req, res) => {
         importedCodes: createdItems.map(i => i.code)
       };
 
+      await auditImport(createdItems.length, createdItems.map(i => i.code), importLog);
+
       return send(res, 201, {
         success: true,
         created: createdItems.length,
@@ -1200,6 +1533,24 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/import") {
       return html(res, importPage());
+    }
+
+    if (req.method === "GET" && url.pathname === "/audit-logs") {
+      return html(res, auditLogsPage());
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/audit-logs") {
+      const filters = {
+        itemCode: url.searchParams.get("itemCode") || "",
+        actionType: url.searchParams.get("actionType") || "",
+        dateKeyword: url.searchParams.get("dateKeyword") || ""
+      };
+      const logs = await getAuditLogs(filters);
+      return send(res, 200, { logs, actionTypes: AUDIT_ACTION_TYPES, actionLabels: AUDIT_ACTION_LABELS });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/audit-logs/meta") {
+      return send(res, 200, { actionTypes: AUDIT_ACTION_TYPES, actionLabels: AUDIT_ACTION_LABELS });
     }
 
     send(res, 404, { error: "not_found" });
