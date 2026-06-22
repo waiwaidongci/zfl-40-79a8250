@@ -1,0 +1,36 @@
+{
+  "batches": [
+    {
+      "id": "DB-1782097065057",
+      "batchNo": "D-20260622-02",
+      "customer": "测试客户B",
+      "deliveryDate": "2026-06-22",
+      "note": "API测试批次",
+      "createdAt": "2026-06-22T02:57:45.057Z",
+      "items": [
+        {
+          "itemId": "CN-1782041231690-iy8bgjpef",
+          "code": "CN-012",
+          "confirmed": false,
+          "addedAt": "2026-06-22T02:57:53.953Z"
+        }
+      ]
+    },
+    {
+      "id": "DB-001",
+      "batchNo": "D-20260620-01",
+      "customer": "示例客户A",
+      "deliveryDate": "2026-06-20",
+      "note": "首批交付样片",
+      "createdAt": "2026-06-20T10:00:00.000Z",
+      "items": [
+        {
+          "itemId": "CN-001",
+          "code": "CN-001",
+          "confirmed": true,
+          "addedAt": "2026-06-20T10:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}

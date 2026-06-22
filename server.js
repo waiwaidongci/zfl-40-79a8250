@@ -7,6 +7,7 @@ import { handleDefectsRoutes } from "./routes/defects.js";
 import { handleBatchRoutes } from "./routes/chemical-batches.js";
 import { handleBoxSlotRoutes } from "./routes/box-slots.js";
 import { handleTemplateRoutes } from "./routes/process-templates.js";
+import { handleDeliveryBatchRoutes } from "./routes/delivery-batches.js";
 import { loadBoxSlots, saveBoxSlots } from "./data/box-slots.js";
 import { loadTemplates } from "./data/process-templates.js";
 import {
@@ -190,7 +191,7 @@ function page() {
   </style>
 </head>
 <body>
-  <header><div><h1>古法蓝晒底片整理室</h1><div class="meta">底片任务、工艺步骤、缺陷和入盒交付</div></div><div style="display:flex;gap:8px"><button class="secondary" onclick="location.href='/import'">批量导入</button><button id="reload">刷新</button></div></header>
+  <header><div><h1>古法蓝晒底片整理室</h1><div class="meta">底片任务、工艺步骤、缺陷和入盒交付</div></div><div style="display:flex;gap:8px"><button class="secondary" onclick="location.href='/delivery-list'">交付清单</button><button class="secondary" onclick="location.href='/import'">批量导入</button><button id="reload">刷新</button></div></header>
   <main>
     <section>
       <form id="createForm"><h2>新增底片</h2><label>工艺流程模板</label><select name="templateId" id="templateSelect"><option value="">不使用模板（兼容模式）</option></select><div id="fields"></div><label>初始状态</label><select name="status">${stages.map(s => '<option>'+s+'</option>').join('')}</select><button>保存底片</button></form>
@@ -217,6 +218,7 @@ function page() {
   <script src="/public/chemical-batch-ui.js"></script>
   <script src="/public/box-slot-ui.js"></script>
   <script src="/public/process-ui.js"></script>
+  <script src="/public/delivery-batch-ui.js"></script>
   <script>
     const fields = [["code","底片编号","text"],["plateSize","玻璃板尺寸","text"],["chemicalBatch","药液批次","text"],["exposure","曝光时间","text"],["waterSource","冲洗水源","text"],["box","存放盒位","text"]];
     const stages = ["待曝光","冲洗中","待入盒","已交付"];
@@ -238,6 +240,7 @@ function page() {
     const statsEl = document.querySelector('#stats');
     const itemSelect = document.querySelector('#itemSelect');
     let items = [];
+    let itemBatchMap = {};
     async function api(path, options) {
       const res = await fetch(path, options && options.body ? { ...options, headers:{ 'Content-Type':'application/json' } } : options);
       const data = await res.json();
@@ -417,6 +420,43 @@ function page() {
         };
       });
     }
+    function attachCardDeliveryBatchHandlers() {
+      document.querySelectorAll('.delivery-batch-select').forEach(sel => {
+        const itemKey = sel.dataset.item;
+        const code = sel.dataset.code;
+        const batchInfo = itemBatchMap[itemKey];
+        const selectedBatchId = batchInfo ? batchInfo.batch.id : '';
+        DeliveryBatchUI.renderBatchSelect(sel, selectedBatchId);
+        sel.onchange = async function() {
+          const val = this.value;
+          try {
+            if (val === '__new__') {
+              const customer = prompt('请输入客户/项目名称（可留空）：') || '';
+              const deliveryDate = prompt('请输入交付日期 YYYY-MM-DD（留空使用今天）：') || new Date().toISOString().slice(0, 10);
+              const newBatch = await DeliveryBatchUI.createBatch({ customer, deliveryDate });
+              await DeliveryBatchUI.assignItemToBatch(itemKey, code, newBatch.id);
+            } else if (val === '') {
+              if (batchInfo) {
+                if (!confirm('确认将此底片从交付批次「' + batchInfo.batch.batchNo + '」中移除？')) {
+                  this.value = selectedBatchId;
+                  return;
+                }
+                await DeliveryBatchUI.removeItemFromBatch(batchInfo.batch.id, itemKey);
+              }
+            } else {
+              if (batchInfo && batchInfo.batch.id !== val) {
+                await DeliveryBatchUI.removeItemFromBatch(batchInfo.batch.id, itemKey);
+              }
+              await DeliveryBatchUI.assignItemToBatch(itemKey, code, val);
+            }
+            await load();
+          } catch (e) {
+            alert(e.message);
+            this.value = selectedBatchId;
+          }
+        };
+      });
+    }
     function render() {
       itemSelect.innerHTML = items.map(item => {
         const procTag = item.processInfo && item.processInfo.template ? ' [' + item.processInfo.template.name + ']' : '';
@@ -492,7 +532,19 @@ function page() {
       if (item.processInfo && item.processInfo.currentStep && item.processInfo.currentStep.allowSkip) {
         skipBtnHtml = '<button class="secondary skip-btn" type="button" data-skip-step="' + item.processInfo.currentStep.key + '" data-item-id="' + (item.id || item.code) + '">跳过当前步骤</button>';
       }
-      return '<article class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h3 style="margin:0">'+(item.code || item.id)+'</h3><span class="pill">'+item.status+'</span></div>' + procTag + procBar + main + defectHtml + repairHint + procSteps + '<label>状态</label><select data-status="'+(item.id || item.code)+'">'+stages.map(s => '<option '+(s===item.status?'selected':'')+'>'+s+'</option>').join('')+'</select>'+(item.status==='待入盒'||item.status==='已交付'?'<label>选择盒位</label><select class="box-slot-card-select" data-box-item="'+(item.id || item.code)+'"></select><div class="box-slot-card-warning" data-box-warning="'+(item.id || item.code)+'" style="display:none;color:var(--warn);font-size:13px;margin-top:4px"></div>':'')+'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="secondary" data-note="'+(item.id || item.code)+'">追加备注</button>' + skipBtnHtml + '</div><div class="logs meta">'+(logs || '暂无记录')+'</div></article>';
+      const itemKey = item.id || item.code;
+      const batchInfo = itemBatchMap[itemKey];
+      let deliveryBatchHtml = '';
+      if (item.status === '已交付') {
+        const batchSelectId = 'del-batch-' + itemKey.replace(/[^a-zA-Z0-9]/g, '_');
+        deliveryBatchHtml = '<div style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px">' +
+          '<div id="batch-tag-' + batchSelectId + '" style="margin-bottom:6px">' + DeliveryBatchUI.getBatchTagHtml(batchInfo) + '</div>' +
+          '<label>交付批次</label>' +
+          '<select class="delivery-batch-select" id="' + batchSelectId + '" data-item="' + itemKey + '" data-code="' + (item.code || item.id) + '">' +
+          '</select>' +
+          '</div>';
+      }
+      return '<article class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h3 style="margin:0">'+(item.code || item.id)+'</h3><span class="pill">'+item.status+'</span></div>' + procTag + procBar + main + defectHtml + repairHint + procSteps + '<label>状态</label><select data-status="'+(item.id || item.code)+'">'+stages.map(s => '<option '+(s===item.status?'selected':'')+'>'+s+'</option>').join('')+'</select>'+(item.status==='待入盒'||item.status==='已交付'?'<label>选择盒位</label><select class="box-slot-card-select" data-box-item="'+(item.id || item.code)+'"></select><div class="box-slot-card-warning" data-box-warning="'+(item.id || item.code)+'" style="display:none;color:var(--warn);font-size:13px;margin-top:4px"></div>':'')+deliveryBatchHtml+'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="secondary" data-note="'+(item.id || item.code)+'">追加备注</button>' + skipBtnHtml + '</div><div class="logs meta">'+(logs || '暂无记录')+'</div></article>';
     }
     async function load() {
       items = await api('/api/items');
@@ -500,6 +552,13 @@ function page() {
       await ChemicalBatchUI.load();
       await BoxSlotUI.load();
       await ProcessUI.load();
+      await DeliveryBatchUI.load();
+      const deliveredIds = items.filter(i => i.status === '已交付').map(i => i.id || i.code);
+      if (deliveredIds.length > 0) {
+        itemBatchMap = await DeliveryBatchUI.lookupItemBatches(deliveredIds);
+      } else {
+        itemBatchMap = {};
+      }
       renderTemplateFilter();
       render();
       const batchSelect = document.getElementById('batchSelect');
@@ -512,6 +571,7 @@ function page() {
       if (defectSelect) DefectUI.renderDefectSelect(defectSelect);
       const actionBoxSel = document.getElementById('actionBoxSelect');
       if (actionBoxSel) BoxSlotUI.renderSlotSelect(actionBoxSel);
+      attachCardDeliveryBatchHandlers();
     }
     function renderTemplateFilter() {
       const sel = document.getElementById('templateFilter');
@@ -597,6 +657,161 @@ function page() {
     ProcessUI.init();
     load();
   </script>
+</body>
+</html>`;
+}
+
+function deliveryListPage() {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>交付清单 - 古法蓝晒底片整理室</title>
+  <style>
+    :root { --bg:#f1f3ef; --panel:#fff; --ink:#20241f; --muted:#687066; --line:#d4ddd0; --accent:#526f43; --warn:#9b4937; --success:#3d7a3d; --info:#3a5a8a; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font-family:Arial,"PingFang SC",sans-serif; }
+    header { padding:22px 28px; background:#fff; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; align-items:center; }
+    h1 { margin:0; font-size:26px; } h2 { margin:0 0 12px; font-size:18px; } h3 { margin:0 0 8px; font-size:16px; }
+    main { padding:22px 28px; max-width:1400px; margin:0 auto; }
+    .panel,.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+    label { display:block; margin:10px 0 5px; color:var(--muted); font-size:13px; }
+    input[type="text"],textarea,select { width:100%; border:1px solid var(--line); border-radius:6px; padding:9px; font:inherit; background:#fff; }
+    textarea { min-height:68px; }
+    button { border:0; border-radius:6px; background:var(--accent); color:#fff; padding:10px 13px; font-weight:700; cursor:pointer; }
+    button.secondary { background:#69736a; } button.danger { background:var(--warn); } button:disabled { opacity:0.5; cursor:not-allowed; } button.small { padding:6px 10px; font-size:12px; font-weight:600; }
+    .tabs { display:flex; gap:0; margin-bottom:14px; flex-wrap:wrap; }
+    .tabs button { border-radius:6px 6px 0 0; background:var(--line); color:var(--ink); font-weight:400; padding:8px 14px; }
+    .tabs button.active { background:var(--panel); font-weight:700; border:1px solid var(--line); border-bottom:0; }
+    .tab-content { display:none; } .tab-content.active { display:block; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; text-align:center; }
+    .stat strong { display:block; font-size:24px; } .stat span { color:var(--muted); font-size:13px; }
+    .stat.warn strong { color:var(--warn); } .stat.success strong { color:var(--success); }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; font-size:13px; vertical-align:top; }
+    th { background:#f5f6f4; font-weight:600; white-space:nowrap; } tr:nth-child(even) { background:#fafbf9; }
+    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; margin:2px; }
+    .pill.success { background:#e8f5e4; color:var(--success); border-color:#b8ddb0; }
+    .pill.warn { background:#fde8e8; color:var(--warn); border-color:#f5c2c2; }
+    .pill.info { background:#e6eef8; color:var(--info); border-color:#b8cde8; }
+    .pill.muted { background:#f0f1ef; color:var(--muted); }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+    .toolbar select,.toolbar input { width:auto; min-width:160px; }
+    .meta { color:var(--muted); font-size:13px; } .error { color:var(--warn); font-weight:600; }
+    .back-btn { text-decoration:none; color:var(--ink); display:inline-flex; align-items:center; gap:6px; }
+    .row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .hidden { display:none !important; }
+    .batch-card { display:grid; gap:8px; }
+    .batch-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap; }
+    .batch-header h3 { margin:0; }
+    .batch-meta { color:var(--muted); font-size:13px; }
+    .batch-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:12px; }
+    .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+    .form-grid label { margin:0; }
+    .ungrouped-notice { background:#fef3d6; border:1px solid #f0d98a; border-radius:6px; padding:12px; margin-bottom:14px; }
+    .empty-state { text-align:center; padding:40px; color:var(--muted); }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1000; }
+    .modal { background:#fff; border-radius:8px; padding:24px; max-width:600px; width:90%; max-height:80vh; overflow:auto; }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .modal-header h2 { margin:0; }
+    .item-detail-grid { display:grid; grid-template-columns:120px 1fr; gap:6px 12px; font-size:13px; }
+    .item-detail-grid dt { color:var(--muted); }
+    .item-detail-grid dd { margin:0; }
+    .confirm-row { background:#fff9e6 !important; }
+    @media (max-width:900px){ header{display:block;padding:18px 16px;} main{padding:16px;} .batch-grid{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <a href="/" class="back-btn">&larr; 返回整理室</a>
+      <h1 style="margin-top:8px">交付清单</h1>
+      <div class="meta">按客户或交付批次归档已交付底片，导出清单</div>
+    </div>
+    <div style="display:flex;gap:8px"><button id="createBatchBtn">+ 新建批次</button><button class="secondary" id="reload">刷新</button></div>
+  </header>
+  <main>
+    <div class="tabs">
+      <button class="active" data-tab="batchesTab">交付批次</button>
+      <button data-tab="ungroupedTab">未归档 <span id="ungroupedCount" class="pill warn" style="margin-left:4px">0</span></button>
+    </div>
+
+    <div id="batchesTab" class="tab-content active">
+      <div class="toolbar">
+        <select id="customerFilter"><option value="">全部客户</option></select>
+        <input id="batchSearch" placeholder="搜索批次号、备注...">
+      </div>
+      <div class="stats" id="batchStats"></div>
+      <div id="batchList" class="batch-grid"></div>
+    </div>
+
+    <div id="ungroupedTab" class="tab-content">
+      <div class="ungrouped-notice">以下底片状态为「已交付」但尚未加入任何交付批次。可批量选择加入现有批次或创建新批次。</div>
+      <div class="toolbar">
+        <button id="assignSelectedBtn" disabled>加入选中到批次...</button>
+        <button class="secondary" id="selectAllUngrouped">全选</button>
+      </div>
+      <div id="ungroupedList"></div>
+    </div>
+  </main>
+
+  <div id="batchModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalTitle">新建交付批次</h2>
+        <button class="secondary small" id="closeModal">×</button>
+      </div>
+      <form id="batchForm">
+        <div class="form-grid">
+          <div><label>批次号</label><input name="batchNo" placeholder="如 D-20260622-01（留空自动生成）"></div>
+          <div><label>客户名称</label><input name="customer" placeholder="客户/项目名称"></div>
+          <div><label>交付日期</label><input name="deliveryDate" type="date"></div>
+        </div>
+        <label>备注</label><textarea name="note" rows="2" placeholder="批次说明..."></textarea>
+        <div class="toolbar" style="margin-top:14px;justify-content:flex-end">
+          <button type="button" class="secondary" id="cancelModal">取消</button>
+          <button type="submit" id="submitBatch">保存批次</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="assignModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>加入交付批次</h2>
+        <button class="secondary small" id="closeAssignModal">×</button>
+      </div>
+      <div id="assignInfo" class="meta" style="margin-bottom:12px"></div>
+      <label>选择目标批次</label>
+      <select id="targetBatchSelect" style="margin-bottom:12px"><option value="">-- 选择批次 --</option></select>
+      <div style="border:1px dashed var(--line);border-radius:6px;padding:10px;margin-bottom:12px">
+        <label style="margin:0 0 6px">或新建批次</label>
+        <div class="form-grid">
+          <div><label style="margin:0">客户名称</label><input id="newCustomer" placeholder="客户/项目名称"></div>
+          <div><label style="margin:0">交付日期</label><input id="newDeliveryDate" type="date"></div>
+        </div>
+        <button type="button" class="secondary small" id="createAndAssignBtn" style="margin-top:10px">创建并加入</button>
+      </div>
+      <div class="toolbar" style="justify-content:flex-end">
+        <button type="button" class="secondary" id="cancelAssign">取消</button>
+        <button id="confirmAssignBtn" disabled>加入所选批次</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="detailModal" class="modal-backdrop hidden">
+    <div class="modal" style="max-width:900px">
+      <div class="modal-header">
+        <h2 id="detailTitle">批次详情</h2>
+        <button class="secondary small" id="closeDetailModal">×</button>
+      </div>
+      <div id="detailContent"></div>
+    </div>
+  </div>
+
+  <script src="/public/delivery-list-ui.js"></script>
 </body>
 </html>`;
 }
@@ -788,6 +1003,9 @@ const server = http.createServer(async (req, res) => {
     if (templateResult !== null) return;
 
     const db = await loadDb();
+
+    const deliveryBatchResult = await handleDeliveryBatchRoutes(req, res, url, db.items);
+    if (deliveryBatchResult !== null) return;
     const templateDb = await loadTemplates();
 
     if (req.method === "GET" && url.pathname === "/") return html(res, page());
@@ -956,6 +1174,10 @@ const server = http.createServer(async (req, res) => {
         items: createdItems,
         importLog
       });
+    }
+
+    if (req.method === "GET" && url.pathname === "/delivery-list") {
+      return html(res, deliveryListPage());
     }
 
     if (req.method === "GET" && url.pathname === "/import") {
