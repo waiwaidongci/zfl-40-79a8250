@@ -329,11 +329,13 @@ const DeliveryListUI = (function() {
           '<th>底片编号</th><th>尺寸</th><th>盒位</th><th>缺陷摘要</th><th>修补记录</th><th>交付时间</th><th>操作</th>' +
         '</tr></thead><tbody>' + items.map(bi => {
           const d = bi.details || {};
-          const rowCls = bi.confirmed ? '' : 'confirm-row';
+          const notDelivered = bi.currentStatus && bi.currentStatus !== '已交付';
+          const rowCls = notDelivered ? 'warn' : (bi.confirmed ? '' : 'confirm-row');
+          const statusWarn = notDelivered ? '<span class="pill warn" style="margin-left:4px">当前：' + bi.currentStatus + '</span>' : '';
           return '<tr class="' + rowCls + '">' +
             '<td style="text-align:center">' +
               (bi.confirmed
-                ? '<span class="pill success">已确认</span>'
+                ? '<span class="pill success">已确认</span>' + statusWarn
                 : '<input type="checkbox" class="confirm-item-check" data-batch="' + id + '" data-item="' + (bi.code || bi.itemId) + '" title="勾选确认">') +
             '</td>' +
             '<td><b>' + (d.code || bi.code) + '</b></td>' +

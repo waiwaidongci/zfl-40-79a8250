@@ -429,6 +429,12 @@ function page() {
         DeliveryBatchUI.renderBatchSelect(sel, selectedBatchId);
         sel.onchange = async function() {
           const val = this.value;
+          const currentItem = items.find(i => (i.id || i.code) === itemKey);
+          if (currentItem && currentItem.status !== '已交付' && val && val !== '') {
+            alert('只能将状态为「已交付」的底片加入交付批次，当前状态为「' + currentItem.status + '」。请先将底片状态更改为「已交付」。');
+            this.value = selectedBatchId;
+            return;
+          }
           try {
             if (val === '__new__') {
               const customer = prompt('请输入客户/项目名称（可留空）：') || '';
@@ -543,6 +549,10 @@ function page() {
           '<select class="delivery-batch-select" id="' + batchSelectId + '" data-item="' + itemKey + '" data-code="' + (item.code || item.id) + '">' +
           '</select>' +
           '</div>';
+      } else if (batchInfo) {
+        deliveryBatchHtml = '<div style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px">' +
+          '<span class="pill warn" style="margin-top:4px;display:inline-block">⚠ 已归档至批次「' + batchInfo.batch.batchNo + '」但当前状态为「' + item.status + '」，请移除或恢复为「已交付」</span>' +
+          '</div>';
       }
       return '<article class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h3 style="margin:0">'+(item.code || item.id)+'</h3><span class="pill">'+item.status+'</span></div>' + procTag + procBar + main + defectHtml + repairHint + procSteps + '<label>状态</label><select data-status="'+(item.id || item.code)+'">'+stages.map(s => '<option '+(s===item.status?'selected':'')+'>'+s+'</option>').join('')+'</select>'+(item.status==='待入盒'||item.status==='已交付'?'<label>选择盒位</label><select class="box-slot-card-select" data-box-item="'+(item.id || item.code)+'"></select><div class="box-slot-card-warning" data-box-warning="'+(item.id || item.code)+'" style="display:none;color:var(--warn);font-size:13px;margin-top:4px"></div>':'')+deliveryBatchHtml+'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="secondary" data-note="'+(item.id || item.code)+'">追加备注</button>' + skipBtnHtml + '</div><div class="logs meta">'+(logs || '暂无记录')+'</div></article>';
     }
@@ -554,8 +564,10 @@ function page() {
       await ProcessUI.load();
       await DeliveryBatchUI.load();
       const deliveredIds = items.filter(i => i.status === '已交付').map(i => i.id || i.code);
-      if (deliveredIds.length > 0) {
-        itemBatchMap = await DeliveryBatchUI.lookupItemBatches(deliveredIds);
+      const cachedIds = Object.keys(itemBatchMap).filter(k => itemBatchMap[k]);
+      const idsToLookup = [...new Set([...deliveredIds, ...cachedIds])];
+      if (idsToLookup.length > 0) {
+        itemBatchMap = await DeliveryBatchUI.lookupItemBatches(idsToLookup);
       } else {
         itemBatchMap = {};
       }

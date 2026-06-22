@@ -63,7 +63,7 @@ async function deleteBatch(id) {
   return { batch: removed };
 }
 
-async function addItemToBatch(batchId, itemData) {
+async function addItemToBatch(batchId, itemData, allItems) {
   const db = await loadDeliveryBatches();
   const batch = findBatchById(db, batchId);
   if (!batch) return { error: "batch_not_found" };
@@ -71,6 +71,13 @@ async function addItemToBatch(batchId, itemData) {
   const itemIdentifier = itemData.itemId || itemData.code;
   if (findItemInBatch(batch, itemIdentifier)) {
     return { error: "该底片已在此批次中" };
+  }
+
+  if (allItems && Array.isArray(allItems)) {
+    const item = allItems.find(x => x.id === itemIdentifier || x.code === itemIdentifier);
+    if (item && item.status !== "已交付") {
+      return { error: "只能归档状态为「已交付」的底片，当前状态为「" + item.status + "」" };
+    }
   }
 
   const batchItem = {
@@ -131,6 +138,8 @@ async function getBatchWithDetails(batchId, allItems) {
     const item = allItems.find(x => x.id === batchItem.itemId || x.code === batchItem.itemId || x.code === batchItem.code);
     return {
       ...batchItem,
+      currentStatus: item ? item.status : null,
+      isDelivered: item ? item.status === "已交付" : false,
       details: item || null
     };
   });

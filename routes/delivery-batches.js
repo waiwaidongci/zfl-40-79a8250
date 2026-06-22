@@ -79,7 +79,7 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
   const itemsMatch = url.pathname.match(/^\/api\/delivery-batches\/([^/]+)\/items$/);
   if (itemsMatch && req.method === "POST") {
     const input = await body(req);
-    const result = await addItemToBatch(itemsMatch[1], input);
+    const result = await addItemToBatch(itemsMatch[1], input, dbItems);
     if (result.error) {
       const status = result.error === "batch_not_found" ? 404 : 400;
       return send(res, status, { error: result.error });
@@ -119,6 +119,9 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
     if (!dbItems) return send(res, 500, { error: "items_db_unavailable" });
     const result = await getBatchWithDetails(exportMatch[1], dbItems);
     if (result.error) return send(res, 404, { error: result.error });
+    const allBatchItems = result.batch.items;
+    const exportableItems = allBatchItems.filter(bi => bi.confirmed && bi.isDelivered);
+    const excludedItems = allBatchItems.filter(bi => bi.confirmed && !bi.isDelivered);
     const exportData = {
       exportAt: new Date().toISOString(),
       batch: {
@@ -129,30 +132,34 @@ export async function handleDeliveryBatchRoutes(req, res, url, dbItems) {
         note: result.batch.note,
         createdAt: result.batch.createdAt
       },
-      items: result.batch.items
-        .filter(bi => bi.confirmed)
-        .map(bi => {
-          const d = bi.details || {};
-          const repairLogs = [
-            ...((d.logs || []).filter(l => l.repair).map(l => l.repair)),
-            ...((d.steps || []).filter(s => s.repair).map(s => s.repair))
-          ].filter(Boolean);
-          const deliveryTime = (d.logs || []).filter(l => l.step === "交付" || l.note?.includes("交付")).slice(-1)[0]?.at
-            || (d.steps || []).filter(s => s.step === "交付").slice(-1)[0]?.at
-            || result.batch.deliveryDate
-            || "";
-          return {
-            code: d.code || bi.code,
-            plateSize: d.plateSize || "",
-            box: d.box || "",
-            defectSummary: d.defect || "",
-            repairRecords: repairLogs.join("; "),
-            deliveryTime: deliveryTime,
-            confirmedAt: bi.addedAt
-          };
-        }),
-      confirmedCount: result.batch.items.filter(bi => bi.confirmed).length,
-      totalInBatch: result.batch.items.length
+      items: exportableItems.map(bi => {
+        const d = bi.details || {};
+        const repairLogs = [
+          ...((d.logs || []).filter(l => l.repair).map(l => l.repair)),
+          ...((d.steps || []).filter(s => s.repair).map(s => s.repair))
+        ].filter(Boolean);
+        const deliveryTime = (d.logs || []).filter(l => l.step === "交付" || l.note?.includes("交付")).slice(-1)[0]?.at
+          || (d.steps || []).filter(s => s.step === "交付").slice(-1)[0]?.at
+          || result.batch.deliveryDate
+          || "";
+        return {
+          code: d.code || bi.code,
+          plateSize: d.plateSize || "",
+          box: d.box || "",
+          defectSummary: d.defect || "",
+          repairRecords: repairLogs.join("; "),
+          deliveryTime: deliveryTime,
+          confirmedAt: bi.addedAt
+        };
+      }),
+      excludedItems: excludedItems.map(bi => ({
+        code: bi.code,
+        currentStatus: bi.currentStatus || "未知",
+        reason: "状态已变更为「" + (bi.currentStatus || "未知") + "」，不在导出清单中"
+      })),
+      exportedCount: exportableItems.length,
+      excludedCount: excludedItems.length,
+      totalInBatch: allBatchItems.length
     };
     const filename = `delivery-${result.batch.batchNo}-${Date.now()}.json`;
     res.writeHead(200, {
